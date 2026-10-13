@@ -1,12 +1,30 @@
+# Python
 __pycache__/
 *.py[cod]
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
 *.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
 dist/
 build/
+
+# Local model weights and generated artifacts (see config/models.lock.yaml)
+models/
+artifacts/
+
+# Env & secrets
 .env
 .env.*
 !.env.example
-.venv/
+
+# Tooling configs (not part of the product)
+.serena/
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/

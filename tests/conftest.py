@@ -20,9 +20,13 @@ LLM_MODEL = "meta-llama/llama-3-8b-instruct"
 
 
 @pytest.fixture(autouse=True)
-def _force_mock_and_limiter():
+def _force_mock_and_limiter(monkeypatch):
     from app.api import main
 
+    # Детерминированный дубль TTS для юнит-тестов (без весов модели):
+    # транспортный контракт стрима по-прежнему проверяется через
+    # app.orchestrator.tts_stream (VOICE_TTS_MODE=real — только демо/рантайм).
+    monkeypatch.setenv("VOICE_TTS_MODE", "off")
     main.llm_adapter.is_mock = True
     main.limiter.reset()
     yield

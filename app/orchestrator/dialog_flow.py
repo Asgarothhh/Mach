@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import json
+import os
 import time
 import uuid
 from collections.abc import AsyncGenerator
@@ -29,6 +30,7 @@ from app.orchestrator.grounding import (
 )
 from app.orchestrator.openrouter_client import OpenRouterAdapter
 from app.orchestrator.state_machine import SessionManager, SessionState, TurnContext
+from app.orchestrator.tts_stream import TTSSentenceStreamer
 from app.schemas.events import TTSChunkEvent
 from app.security.guardrails import GuardrailsService
 from app.security.telemetry import (
@@ -479,10 +481,41 @@ class DialogOrchestrator:
             return
         if self.session_manager.active_sessions.get(session_id) == SessionState.INTERRUPTED:
             return
-        text = outcome.answer_text or ""
-        yield self._create_mock_tts_chunk(
-            session_id, outcome.turn_id, text, is_last=True
-        )
+        text = (outcome.answer_text or "").strip()
+        if not text:
+            return
+
+        # Тестовый дубль TTS для юнит-тестов/CI (без загрузки весов модели):
+        # один чанк с непустым audio_base64 и is_last_chunk=True.
+        if os.getenv("VOICE_TTS_MODE", "real").lower() in {"off", "mock"}:
+            yield self._create_mock_tts_chunk(
+                session_id, outcome.turn_id, text, is_last=True
+            )
+            return
+
+        # Реальный потоковый TTS (ML-часть): фразы по мере синтеза,
+        # отмена по barge-in через TurnContext.is_cancelled.
+        turn_context = context
+        if turn_context is None:
+            turn_context = TurnContext(
+                turn_id=outcome.turn_id,
+                session_id=session_id,
+                tenant_id=tenant_id or "demo-tenant-1",
+            )
+        tts_stream = TTSSentenceStreamer(session_id, outcome.turn_id, turn_context)
+        self.session_manager.transition(session_id, SessionState.SPEAKING)
+        try:
+            async for event in tts_stream.feed_text(text):
+                yield event
+            async for event in tts_stream.finish():
+                yield event
+        finally:
+            if (
+                not getattr(turn_context, "is_cancelled", False)
+                and self.session_manager.active_sessions.get(session_id)
+                not in (SessionState.INTERRUPTED, SessionState.CLOSED)
+            ):
+                self.session_manager.transition(session_id, SessionState.LISTENING)
 
     async def _retrieve_guarded(
         self,
