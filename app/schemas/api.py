@@ -45,3 +45,10 @@ class TranscriptCorrectionRequest(BaseModel):
     turn_id: str
     corrected_text: str
     reason: str = Field(..., description="Причина корректировки, например: 'ASR_error'")
+
+class HandoffResponse(BaseModel):
+    session_id: str
+    status: str
+    handoff_type: str  # "human" или "chat"
+    chat_link: Optional[str] = None
+    message: str
