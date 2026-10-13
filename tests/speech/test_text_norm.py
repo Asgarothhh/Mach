@@ -30,12 +30,17 @@ def test_abbreviations_and_whitespace() -> None:
     assert "  " not in result.spoken
 
 
-def test_numbers_and_phones_are_not_altered() -> None:
+def test_numbers_and_phones_are_spoken() -> None:
     text = "Позвоните на 0890 или +375 17 237-98-98, стоимость 100 рублей"
     result = normalize_for_tts(text)
-    assert "0890" in result.spoken
-    assert "+375 17 237-98-98" in result.spoken
-    assert "100 рублей" in result.spoken
+
+    assert result.original == text
+    assert "ноль восемь девять ноль" in result.spoken
+    assert (
+        "плюс триста семьдесят пять, семнадцать, двести тридцать семь, "
+        "девяносто восемь, девяносто восемь" in result.spoken
+    )
+    assert "сто рублей" in result.spoken
 
 
 def test_control_characters_removed() -> None:

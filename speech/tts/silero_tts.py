@@ -19,6 +19,7 @@ request reports ``first_chunk_ms`` for the latency budget.
 
 from __future__ import annotations
 
+import logging
 import wave
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -37,6 +38,8 @@ from speech.tts._streaming import SegmentEngine, synthesize_segments
 from speech.tts.preprocess import SileroStressPreprocessor, TextPreprocessor
 
 __all__ = ["SileroTTSAdapter", "SileroTTSConfig", "TTSEngine"]
+
+logger = logging.getLogger(__name__)
 
 
 # Backwards-compatible name for the engine protocol used by tests.
@@ -149,8 +152,30 @@ class _PackagedSileroEngine:
             "tts_models", "model"
         )
         self._model.to(torch.device("cpu"))
+        symbols = getattr(self._model, "symbols", None)
+        self._allowed_symbols: set[str] | None = (
+            set(symbols) if symbols is not None else None
+        )
+        self._warned_leftovers: set[str] = set()
+
+    def _warn_unsupported(self, text: str) -> None:
+        """Warn once per character about symbols the Silero frontend drops."""
+        if self._allowed_symbols is None:
+            return
+        leftovers = {
+            char
+            for char in text
+            if char not in self._allowed_symbols and not char.isspace()
+        } - self._warned_leftovers
+        if leftovers:
+            self._warned_leftovers |= leftovers
+            logger.warning(
+                "Silero frontend will drop unsupported characters: %s",
+                " ".join(sorted(leftovers)),
+            )
 
     def synthesize(self, text: str, *, speaker: str, sample_rate: int) -> np.ndarray:
+        self._warn_unsupported(text)
         kwargs = {"text": text, "speaker": speaker, "sample_rate": sample_rate}
         apply_tts = getattr(self._model, "apply_tts", None)
         with self._torch.no_grad():

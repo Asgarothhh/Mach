@@ -1,10 +1,15 @@
 """Conservative text normalization for TTS (SSOT §5.7).
 
-The rule of this module: normalization must never change facts. It only
-expands a small set of safe abbreviations, cleans whitespace/control
-characters and manages question-intonation markers (``*слово*`` for Silero
-v5.4+/v5.5+ Russian voices). Numbers, phone numbers, prices and product names
-pass through unchanged; the original text is preserved for the protected log.
+The rule of this module: normalization must never change facts. It expands a
+small set of safe abbreviations, cleans whitespace/control characters,
+manages question-intonation markers (``*слово*`` for Silero v5.4+/v5.5+) and
+speaks out numbers via :mod:`speech.number_norm`.
+
+Why numbers must become words: the Silero packaged models have NO digits in
+their symbol sets and silently DROP everything outside it — "100 рублей"
+reaches the model as "рублей", "+375 17 237-98-98" as almost nothing. See
+``speech/number_norm.py`` for phones, short codes, USSD, currency and unit
+agreement. The original text is preserved for the protected log.
 """
 
 from __future__ import annotations
@@ -12,6 +17,8 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass
+
+from speech.number_norm import normalize_numbers_ru
 
 __all__ = ["NormalizedText", "normalize_for_tts"]
 
@@ -57,5 +64,7 @@ def normalize_for_tts(
 
     for pattern, replacement in _ABBREVIATIONS:
         cleaned = pattern.sub(replacement, cleaned)
+
+    cleaned = normalize_numbers_ru(cleaned)
 
     return NormalizedText(original=text, spoken=cleaned)

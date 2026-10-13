@@ -112,8 +112,8 @@ def test_text_normalization_reaches_engine_and_chunk_log() -> None:
     adapter = SileroTTSAdapter(engine)
     chunks = asyncio.run(_collect_chunks(adapter, request("Стоимость 10 руб.")))
 
-    assert engine.calls[0][0] == "Стоимость 10 рублей"
-    assert chunks[0].text == "Стоимость 10 рублей"
+    assert engine.calls[0][0] == "Стоимость десять рублей"
+    assert chunks[0].text == "Стоимость десять рублей"
 
 
 def test_empty_engine_output_is_typed_error() -> None:

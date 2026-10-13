@@ -11,6 +11,7 @@ voice-каскада. Нормативные источники: [`docs/SPEC_MTS
 | `speech/contracts.py` | Типизированные контракты: `AudioFrame`, `VADEvent`, `ASREvent`, `TTSRequest`, `TTSChunk`, `CancellationToken`, протоколы `VADAdapter`/`ASRAdapter`/`TTSAdapter`, типизированные ошибки (`model_unavailable`, `timeout`, `invalid_audio`, `cancelled`, `synthesis_failed`). |
 | `speech/audio.py` | PCM16 ↔ float32, нарезка аудио на транспортные чанки, длительности. |
 | `speech/text_norm.py` | Консервативная нормализация текста для TTS: безопасные сокращения, управляющие символы, маркеры интонации вопросов `*слово*`. |
+| `speech/number_norm.py` | Русские числа/телефоны/УССД → слова: кардиналы с родами («одна тысяча»), согласование валют («19,90 руб.» → «девятнадцать рублей девяносто копеек»), единицы времени («5 минут»), групповое чтение телефонов, короткие коды и УССД. **Причина модуля: у Silero-моделей нет цифр в наборе символов, и их фронтенд молча удаляет всё лишнее — без нормализации «100 рублей» превращалось в «рублей».** |
 | `speech/revisions.py` | `TranscriptRevisionTracker` — поздний partial не перезаписывает final, дубликаты не создают новые ходы (SSOT §5.4). |
 | `speech/vad/silero_vad.py` | Streaming VAD: Silero VAD (MIT) + собственный endpointing-автомат (`min_speech`, `min_silence`, `prefix_padding`, `max_utterance`, гистерезис). |
 | `speech/tts/_streaming.py` | Общий streaming-цикл TTS: нормализация → препроцессор → движок → PCM-чанки с `chunk_id`/`generation_id` и отменой. |
@@ -104,6 +105,8 @@ HTML-страницу для прослушивания командой. Фра
 ## Что дальше (по плану ML)
 
 - [x] Подбор коммерчески чистой замены силеро-TTS: MIT-связка CIS-base+stress, Chatterbox V3, Kokoro-ru; A/B-прогон и страница для команды.
+- [x] Нормализация текста для TTS: числа, телефоны, УССД, валюты и единицы → слова (Silero молча удаляет цифры из текста).
+- [ ] Даты, время и порядковые числительные в TN (TODO: «13 октября», «10:30», «первый»).
 - [ ] Streaming ASR: адаптер `sherpa-onnx` (T-One CTC RU / Zipformer RU) + baseline `faster-whisper` large-v3-turbo; WER/latency на своём наборе.
 - [ ] Датасет ASR (≥200 utterances, синтетика/обезличенное) и метрики WER/CER по числам, суммам, датам.
 - [ ] Калибровка порогов VAD на шум/паузы/перебивания; замер false positives/negatives.
