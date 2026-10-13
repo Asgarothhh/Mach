@@ -16,12 +16,23 @@ async def run_smoke_test():
     async with httpx.AsyncClient() as client:
         response = await client.post(
             f"{API_URL}/api/v1/sessions",
-            json={"tenant_id": "demo-tenant-1", "channel": "test-script"}
+            json={"tenant_id": "mts-public-demo", "channel": "test-script"}
         )
         response.raise_for_status()
         session_data = response.json()
         session_id = session_data["session_id"]
         print(f"✅ Сессия создана: {session_id}")
+
+        text_response = await client.post(
+            f"{API_URL}/api/v1/sessions/{session_id}/turns/text",
+            json={"text": "входящие звонки турции"},
+        )
+        text_response.raise_for_status()
+        text_data = text_response.json()
+        print(
+            f"✅ Text turn: status={text_data.get('answer_status')} "
+            f"citations={text_data.get('citation_ids')}"
+        )
 
     # 2. Подключаемся по WebSocket
     ws_endpoint = f"{WS_URL}/api/v1/ws/sessions/{session_id}"

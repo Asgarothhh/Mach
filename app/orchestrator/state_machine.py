@@ -1,5 +1,6 @@
 import asyncio
 from enum import Enum
+
 from pydantic import BaseModel, Field
 
 
@@ -19,6 +20,15 @@ class SessionState(str, Enum):
     CHAT_HANDOFF = "CHAT_HANDOFF"
     HUMAN_HANDOFF = "HUMAN_HANDOFF"
     CLOSED = "CLOSED"
+
+
+class SessionBinding(BaseModel):
+    tenant_id: str
+    language: str
+    channel: str
+
+    class Config:
+        frozen = True
 
 
 class TurnContext(BaseModel):
@@ -42,6 +52,16 @@ class SessionManager:
     def __init__(self):
         self.active_sessions: dict[str, SessionState] = {}
         self.active_turns: dict[str, TurnContext] = {}
+        self.bindings: dict[str, SessionBinding] = {}
+
+    def bind(self, session_id: str, binding: SessionBinding) -> None:
+        self.bindings[session_id] = binding
+
+    def get_binding(self, session_id: str) -> SessionBinding | None:
+        return self.bindings.get(session_id)
+
+    def unbind(self, session_id: str) -> None:
+        self.bindings.pop(session_id, None)
 
     def transition(self, session_id: str, new_state: SessionState):
         # Здесь можно добавить валидацию допустимых переходов

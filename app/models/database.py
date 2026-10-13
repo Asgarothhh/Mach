@@ -1,14 +1,17 @@
 import uuid
-from datetime import datetime, timezone
-from sqlalchemy import Column, String, DateTime, JSON, ForeignKey, Enum as SQLEnum
+from datetime import UTC, datetime
+
+from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.orm import declarative_base, relationship
+
 from app.orchestrator.state_machine import SessionState
 
 Base = declarative_base()
 
 
 def utcnow():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Tenant(Base):
@@ -63,3 +66,34 @@ class AuditEvent(Base):
     action = Column(String, nullable=False)
     timestamp = Column(DateTime(timezone=True), default=utcnow)
     details = Column(JSON, nullable=True)
+
+
+class RetrievalEvent(Base):
+    """Session-side retrieval audit row (SSOT §8.3). No raw query text."""
+    __tablename__ = "retrieval_events"
+
+    event_id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    turn_id = Column(String, ForeignKey("turns.turn_id"), nullable=False, index=True)
+    session_id = Column(String, nullable=False)
+    tenant_id = Column(String, nullable=False, index=True)
+    index_revision = Column(String, nullable=True)
+    retrieval_mode = Column(String, nullable=True)
+    config_version = Column(String, nullable=True)
+    evidence_status = Column(String, nullable=True)
+    outcome = Column(String, nullable=False)
+    error_code = Column(String, nullable=True)
+    query_sha256 = Column(String, nullable=False)
+    query_chars = Column(Integer, nullable=False)
+    applied_filters = Column(JSON, nullable=True)
+    candidates = Column(JSON, nullable=True)
+    selected_source_ids = Column(JSON, nullable=True)
+    cited_source_ids = Column(JSON, nullable=True)
+    conflict_chunk_ids = Column(JSON, nullable=True)
+    excluded_counts = Column(JSON, nullable=True)
+    degraded = Column(JSON, nullable=True)
+    top_score = Column(Float, nullable=True)
+    outdated_matches = Column(Integer, nullable=True)
+    duration_ms = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    turn = relationship("Turn")
