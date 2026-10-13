@@ -48,3 +48,9 @@ def test_control_characters_removed() -> None:
     assert "\x00" not in result.spoken
     assert "\x07" not in result.spoken
     assert result.spoken == "Привет мир"
+
+
+def test_ussd_survives_plain_voice_marker_stripping() -> None:
+    result = normalize_for_tts("Наберите *111*4#.", supports_question_intonation=False)
+    assert "звёздочка один один один звёздочка четыре решётка" in result.spoken
+    assert "*" not in result.spoken and "#" not in result.spoken

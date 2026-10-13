@@ -36,8 +36,12 @@
 
 ## Программные зависимости (код)
 
-| Компонент | Лицензия кода | Использование | Статус |
+| iter/cmp | Лицензия кода | Использование | Статус |
 |---|---|---|---|
+| onnx-asr | MIT | рантайм ASR (onnxruntime, без torch) | approved |
+| pyarrow | Apache-2.0 | чтение parquet-датасетов (eval) | approved |
+| soundfile | BSD-3-Clause | чтение/запись аудио (eval) | approved |
+| soxr (python-soxr / libsoxr) | LGPL-2.1 | ресемплинг в eval-скриптах | approved-eval (LGPL — только инструменты оценки) |
 | numpy | BSD-3-Clause | базовые операции с PCM | approved |
 | pydantic | MIT | контракты событий | approved |
 | pytest, pytest-asyncio, ruff, mypy | MIT / PSF / Apache-2.0 | dev/CI | approved |

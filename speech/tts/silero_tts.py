@@ -148,10 +148,16 @@ class _PackagedSileroEngine:
             ) from exc
         self._torch = torch
         self._cfg = cfg
+        previous_threads = torch.get_num_threads()
         self._model = torch.package.PackageImporter(str(model_path)).load_pickle(
             "tts_models", "model"
         )
         self._model.to(torch.device("cpu"))
+        # IMPORTANT: the packaged Silero model calls torch.set_num_threads(1)
+        # during import. Left as-is it silently throttles every other torch
+        # engine in the process (measured: Kokoro RTF 0.21 -> 0.75). Restore
+        # the process-wide value right after the load.
+        torch.set_num_threads(previous_threads)
         symbols = getattr(self._model, "symbols", None)
         self._allowed_symbols: set[str] | None = (
             set(symbols) if symbols is not None else None
@@ -159,13 +165,16 @@ class _PackagedSileroEngine:
         self._warned_leftovers: set[str] = set()
 
     def _warn_unsupported(self, text: str) -> None:
-        """Warn once per character about symbols the Silero frontend drops."""
+        """Warn once per character about symbols the Silero frontend drops.
+
+        The model lowercases text internally, so the check is case-insensitive.
+        """
         if self._allowed_symbols is None:
             return
         leftovers = {
             char
             for char in text
-            if char not in self._allowed_symbols and not char.isspace()
+            if char.lower() not in self._allowed_symbols and not char.isspace()
         } - self._warned_leftovers
         if leftovers:
             self._warned_leftovers |= leftovers
@@ -207,8 +216,11 @@ class _PipSileroEngine:
             ) from exc
         self._torch = torch
         self._cfg = cfg
+        previous_threads = torch.get_num_threads()
         self._model, _ = silero_tts(language="ru", speaker=cfg.model_id)
         self._model.to(torch.device("cpu"))
+        # See _PackagedSileroEngine: the Silero code sets torch threads to 1.
+        torch.set_num_threads(previous_threads)
 
     def synthesize(self, text: str, *, speaker: str, sample_rate: int) -> np.ndarray:
         with self._torch.no_grad():

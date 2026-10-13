@@ -30,7 +30,6 @@ import asyncio
 import contextlib
 import json
 import platform
-import re
 import statistics
 import time
 import wave
@@ -43,6 +42,7 @@ from typing import Any
 import numpy as np
 
 from speech.contracts import CancellationToken, TTSRequest
+from speech.metrics import word_wer
 
 PHRASES: list[str] = [
     "Здравствуйте! Меня зовут Анна, я виртуальный ассистент компании.",
@@ -203,32 +203,8 @@ def write_wav(path: Path, pcm_s16le: bytes, sample_rate: int) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Whisper round-trip WER (intelligibility proxy)
+# Whisper round-trip WER (intelligibility proxy) — metrics live in speech.metrics
 # ---------------------------------------------------------------------------
-
-
-def normalize_text(text: str) -> str:
-    text = text.lower().replace("ё", "е")
-    text = re.sub(r"[^а-яa-z0-9\s]", " ", text)
-    return re.sub(r"\s+", " ", text).strip()
-
-
-def word_wer(reference: str, hypothesis: str) -> float:
-    ref = normalize_text(reference).split()
-    hyp = normalize_text(hypothesis).split()
-    previous = list(range(len(hyp) + 1))
-    for i, ref_word in enumerate(ref, start=1):
-        current = [i]
-        for j, hyp_word in enumerate(hyp, start=1):
-            current.append(
-                min(
-                    previous[j] + 1,
-                    current[j - 1] + 1,
-                    previous[j - 1] + (ref_word != hyp_word),
-                )
-            )
-        previous = current
-    return previous[-1] / max(1, len(ref))
 
 
 def load_whisper() -> Any:

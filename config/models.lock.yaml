@@ -163,11 +163,85 @@ entries:
       code: MIT
       weights: MIT
     commercial_use: allowed
-    status: candidate
+    status: benchmark
     notes: >
-      Quality baseline transcriber (not streaming by itself). WER/latency
-      benchmark against sherpa-onnx streaming candidates runs on our own test
-      set (SSOT §5.4).
+      Quality baseline transcriber (offline). WER/latency benchmark vs T-one /
+      GigaAM / Vosk runs on our own test set (SSOT §5.4).
+  - id: t-one
+    kind: asr-streaming
+    title: "T-one (T-Tech, 71M) — streaming ASR for Russian telephony"
+    source_url: https://huggingface.co/t-tech/T-one
+    runtime: "onnx-asr (t-tech/t-one)"
+    sha256: null
+    license:
+      code: Apache-2.0
+      weights: Apache-2.0
+    commercial_use: allowed
+    status: benchmark
+    notes: >
+      300 ms streaming chunks, phrase splitter + KenLM CTC decoder; published
+      benchmarks beat GigaAM/Vosk/Whisper on telephony WER. Primary candidate
+      for the call pipeline (speech/asr/onnx_asr_adapter.py).
+  - id: gigaam-v3
+    kind: asr
+    title: "GigaAM v3 CTC/RNNT (Sber, 242M)"
+    source_url: https://huggingface.co/ai-sage/GigaAM-v3
+    runtime: "onnx-asr (gigaam-v3-ctc / gigaam-v3-rnnt)"
+    sha256: null
+    license:
+      code: MIT
+      weights: MIT
+    commercial_use: allowed
+    status: benchmark
+    notes: "Best overall Russian WER (CommonVoice); non-streaming; offline comparison point."
+  - id: vosk-model-small-ru
+    kind: asr-streaming
+    title: "Vosk small ru (20M)"
+    source_url: https://alphacephei.com/vosk/models
+    runtime: "onnx-asr (alphacep/vosk-model-small-ru)"
+    sha256: null
+    license:
+      code: Apache-2.0
+      weights: Apache-2.0
+    commercial_use: allowed
+    status: benchmark
+    notes: "Lightweight streaming baseline; lower quality, useful for CPU-floor latency."
+  - id: onnx-asr
+    kind: eval-tool
+    title: "onnx-asr (Ilya Stupakov) — onnxruntime-only ASR runtime"
+    source_url: https://github.com/istupakov/onnx-asr
+    pin: "onnx-asr==0.12.0"
+    sha256: null
+    license:
+      code: MIT
+      weights: "n/a (runtime)"
+    commercial_use: allowed
+    status: approved-eval
+    notes: "Runs T-one / GigaAM / Vosk / Whisper-ONNX without PyTorch; used for the ASR benchmark."
+  - id: openstt-calls-mirror
+    kind: dataset
+    title: "OpenSTT telephone calls (Malecc/asr_calls_2_val mirror)"
+    source_url: https://huggingface.co/datasets/Malecc/asr_calls_2_val
+    license:
+      code: "NOT STATED in the dataset card (upstream OpenSTT/community data)"
+      weights: "n/a"
+    commercial_use: "unclear"
+    status: internal-evaluation-only
+    notes: >
+      Real Russian telephone recordings used only for internal WER evaluation.
+      Never redistribute and never commit the audio to the repository
+      (artifacts/ is gitignored). Revisit the license question before any
+      external use.
+  - id: fleurs-ru
+    kind: dataset
+    title: "FLEURS ru (Google Few-shot Learning Evaluation of Universal Representations)"
+    source_url: https://huggingface.co/datasets/google/fleurs
+    license:
+      code: "CC-BY-4.0"
+      weights: "n/a"
+    commercial_use: allowed
+    status: approved-eval
+    notes: "Clean read speech + locally generated pink-noise version for the benchmark."
   - id: sherpa-onnx-streaming-ru
     kind: asr-streaming
     title: "sherpa-onnx streaming Russian models (T-One CTC RU / Zipformer RU candidates)"

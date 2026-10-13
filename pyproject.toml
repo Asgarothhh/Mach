@@ -22,8 +22,8 @@ tts-kokoro = [
 # torch==2.6.0, so it deserves its own venv in CI. Install with:
 #   uv pip install chatterbox-tts
 vad = ["silero-vad>=5.1", "torch>=2.4"]
-asr = ["faster-whisper>=1.1", "sherpa-onnx>=1.10"]
-eval = ["faster-whisper>=1.1"]
+asr = ["faster-whisper>=1.1", "sherpa-onnx>=1.10", "onnx-asr[cpu,hub]>=0.12"]
+eval = ["faster-whisper>=1.1", "pyarrow>=17", "soundfile>=0.12", "soxr>=0.4"]
 dev = [
     "pytest>=8.2",
     "pytest-asyncio>=0.23",
@@ -54,8 +54,9 @@ target-version = "py311"
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.ruff.lint.per-file-ignores]
-# HTML template strings inside the report renderer are intentionally long.
+# HTML template strings inside the report renderers are intentionally long.
 "scripts/tts_ab_eval.py" = ["E501"]
+"scripts/asr_benchmark.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.11"

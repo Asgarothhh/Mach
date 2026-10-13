@@ -58,13 +58,16 @@ def normalize_for_tts(
     cleaned = _CONTROL_RE.sub(" ", cleaned)
     cleaned = " ".join(cleaned.split())
 
+    # Numbers/USSD first: the USSD pattern relies on leading "*", so it must run
+    # before question-intonation markers are stripped for voices that do not
+    # support intonation (otherwise "*111*4#" degrades to garbage).
+    cleaned = normalize_numbers_ru(cleaned)
+
     if not supports_question_intonation or cleaned.count("*") % 2 != 0:
         cleaned = cleaned.replace("*", "")
         cleaned = _WHITESPACE_RE.sub(" ", cleaned).strip()
 
     for pattern, replacement in _ABBREVIATIONS:
         cleaned = pattern.sub(replacement, cleaned)
-
-    cleaned = normalize_numbers_ru(cleaned)
 
     return NormalizedText(original=text, spoken=cleaned)
