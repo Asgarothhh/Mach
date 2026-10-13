@@ -106,15 +106,24 @@ def engine_registry() -> dict[str, EngineDef]:
     }
 
 
-def read_wav_mono16k(path: Path) -> tuple[np.ndarray, float]:
+def read_wav_mono(path: Path) -> tuple[np.ndarray, float, int]:
+    """Read a 16-bit PCM WAV into mono float32 [-1; 1], duration and rate."""
     with wave.open(str(path), "rb") as fh:
         rate = fh.getframerate()
         channels = fh.getnchannels()
         raw = fh.readframes(fh.getnframes())
-    if rate != 16000 or channels != 1:
-        raise ValueError(f"{path}: expected 16 kHz mono, got {rate} Hz / {channels} ch")
+    if channels != 1:
+        raise ValueError(f"{path}: expected mono, got {channels} ch")
     audio = np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
-    return audio, len(audio) / 16000.0
+    return audio, len(audio) / rate, rate
+
+
+def to_16k(audio: np.ndarray, rate: int) -> np.ndarray:
+    if rate == 16000:
+        return audio
+    import soxr
+
+    return soxr.resample(audio, rate, 16000, quality="HQ").astype(np.float32)
 
 
 def evaluate_engine(
@@ -144,7 +153,8 @@ def evaluate_engine(
     total_audio = 0.0
 
     for entry in selected:
-        audio, duration = read_wav_mono16k(root / entry["audio"])
+        audio, duration, rate = read_wav_mono(root / entry["audio"])
+        audio = to_16k(audio, rate)
         started = time.perf_counter()
         try:
             hypothesis = recognize(audio)

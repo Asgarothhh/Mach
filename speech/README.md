@@ -20,6 +20,10 @@ voice-каскада. Нормативные источники: [`docs/SPEC_MTS
 | `speech/tts/kokoro_tts.py` | Kokoro-82M RU (OpenRAIL): sveta/masha/dima, CPU, автоударения через RUAccent (MIT). |
 | `speech/tts/preprocess.py` | `TextPreprocessor` + `SileroStressPreprocessor` (silero-stress, MIT). |
 | `speech/asr/mock.py` | Детерминированный mock ASR (interim→final) для E2E этапа 0–1. |
+| `speech/asr/onnx_asr_adapter.py` | Segment-mode `ASRAdapter` поверх `onnx-asr`: T-one (streaming-телефония), GigaAM v3, Vosk, Whisper-ONNX. onnxruntime, без torch. |
+| `speech/metrics.py` | WER/CER с русской нормализацией (общие для ASR-бенчмарка и TTS round-trip). |
+| `scripts/fetch_asr_testset.py` | Сборка тестового набора: звонки OpenSTT (внутренняя оценка), FLEURS ru (чисто/шум), синтетика (числа/телефоны/УССД). |
+| `scripts/asr_benchmark.py` | WER/CER/RTF по категориям + HTML-страница результатов. |
 | `scripts/tts_ab_eval.py` | A/B-бенчмарк русских TTS: first-chunk, RTF, WER-прокси (Whisper round-trip), HTML-страница для команды. |
 
 Манифест моделей и лицензий: [`config/models.lock.yaml`](../config/models.lock.yaml),
@@ -106,9 +110,10 @@ HTML-страницу для прослушивания командой. Фра
 
 - [x] Подбор коммерчески чистой замены силеро-TTS: MIT-связка CIS-base+stress, Chatterbox V3, Kokoro-ru; A/B-прогон и страница для команды.
 - [x] Нормализация текста для TTS: числа, телефоны, УССД, валюты и единицы → слова (Silero молча удаляет цифры из текста).
+- [x] Выбор ASR-стекa: onnx-asr (MIT) + T-one (Apache-2.0, streaming-телефония), GigaAM v3 (MIT), Vosk (Apache-2.0), Whisper-ONNX (MIT).
+- [x] Тестовый набор ASR: 234 фразы (реальные звонки OpenSTT, FLEURS ru чисто/шум, синтетика с числами/телефонами/УССД); WER/CER/RTF-бенчмарк и страница результатов.
 - [ ] Даты, время и порядковые числительные в TN (TODO: «13 октября», «10:30», «первый»).
-- [ ] Streaming ASR: адаптер `sherpa-onnx` (T-One CTC RU / Zipformer RU) + baseline `faster-whisper` large-v3-turbo; WER/latency на своём наборе.
-- [ ] Датасет ASR (≥200 utterances, синтетика/обезличенное) и метрики WER/CER по числам, суммам, датам.
-- [ ] Калибровка порогов VAD на шум/паузы/перебивания; замер false positives/negatives.
-- [ ] Пайплайн barge-in E2E (VAD → cancel → flush TTS) совместно с Backend + ML-Flow.
+- [ ] Калибровка порогов VAD на шум/паузы/перебивания; замер false positives/negatives на записях звонков.
+- [ ] Streaming-интеграция T-one в каскад (нативные чанки 300 мс через пакет `tone`) и E2E barge-in с оркестратором.
+- [ ] Датасет расширять: ≥200 фраз уже есть; добавить шумовые условия и больше доменных терминов.
 - [ ] Финальный выбор production-голоса по итогам прослушивания командой и license review.
