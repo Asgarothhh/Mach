@@ -21,6 +21,9 @@ artifacts/
 .env.*
 !.env.example
 
+# Tooling configs (not part of the product)
+.serena/
+
 # OS / IDE
 .DS_Store
 .idea/
