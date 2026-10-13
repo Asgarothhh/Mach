@@ -4,12 +4,11 @@ import uuid
 import asyncio
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, Depends, HTTPException, status, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Depends, HTTPException, status, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 # Импорт схем и моделей
-from app.schemas.api import HandoffResponse
-from app.schemas.api import SessionCreateRequest, SessionResponse, ErrorResponse
+from app.schemas.api import HandoffResponse, SessionCreateRequest, SessionResponse, ErrorResponse
 from app.schemas.events import ASREvent, VADEvent, InterruptionEvent
 from app.models.database import Turn
 
@@ -27,10 +26,19 @@ from prometheus_client import make_asgi_app
 from app.api.deps import AsyncSessionLocal
 from app.api.admin import router as admin_router
 
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
 logger = get_logger("api_main")
 
 # Инициализация FastAPI
 app = FastAPI(title="MTS Voice Agent API", version="1.0")
+
+# Настройка Rate Limiting
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Настройка CORS для Frontend
 app.add_middleware(
@@ -48,15 +56,10 @@ app.include_router(admin_router)
 metrics_app = make_asgi_app()
 app.mount("/metrics", metrics_app)
 
-# Инициализация синглтонов сервисов
+# Инициализация синглтонов сервисов (Убрано дублирование)
 session_manager = SessionManager()
 guardrails = GuardrailsService()
 retriever = MockKnowledgeRetriever()
-
-# Инициализация синглтонов сервисов
-session_manager = SessionManager()
-guardrails = GuardrailsService()
-retriever = MockKnowledgeRetriever() # ИСПРАВЛЕНИЕ: инициализируем ретривер
 
 # LLM-адаптер с автоматическим переходом в mock-режим, если ключа нет
 llm_adapter = OpenRouterAdapter(
@@ -64,7 +67,7 @@ llm_adapter = OpenRouterAdapter(
     allowed_models=["meta-llama/llama-3-8b-instruct"]
 )
 
-# ИСПРАВЛЕНИЕ: передаем retriever 4-ым аргументом[cite: 16, 17]
+# Передаем retriever 4-ым аргументом[cite: 6, 7]
 dialog_orchestrator = DialogOrchestrator(session_manager, llm_adapter, guardrails, retriever)
 
 
@@ -82,8 +85,9 @@ async def readiness():
 
 
 @app.post("/api/v1/sessions", response_model=SessionResponse, tags=["Sessions"])
-async def create_session(req: SessionCreateRequest):
-    """Инициализация новой сессии вызова."""
+@limiter.limit("5/minute")
+async def create_session(request: Request, req: SessionCreateRequest):
+    """Инициализация новой сессии вызова с ограничением частоты[cite: 6]."""
     session_id = str(uuid.uuid4())
     session_manager.transition(session_id, SessionState.CREATED)
 
@@ -131,7 +135,7 @@ async def send_tts_stream(websocket: WebSocket, session_id: str, asr_text: str):
 @app.websocket("/api/v1/ws/sessions/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
     """
-    Точка входа для потокового аудио и событий[cite: 16, 17].
+    Точка входа для потокового аудио и событий.
     """
     # TODO: Проверка media token перед accept
     await websocket.accept()
@@ -165,7 +169,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     session_manager.transition(session_id, new_state)
 
                 elif event_type == "InterruptionEvent":
-                    # Пользователь перебил бота: отменяем токен генерации[cite: 16, 17]
+                    # Пользователь перебил бота: отменяем токен генерации[cite: 6, 7]
                     session_manager.handle_barge_in(session_id)
                     logger.info("barge_in_triggered", session_id=session_id)
 
@@ -183,7 +187,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 
 @app.post("/api/v1/sessions/{session_id}/handoff/human", response_model=HandoffResponse, tags=["Sessions"])
 async def handoff_to_human(session_id: str):
-    """Перевод сессии на живого оператора (SIP-трансфер)."""
+    """Перевод сессии на живого оператора (SIP-трансфер)[cite: 7]."""
     if session_id not in session_manager.active_sessions:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -203,7 +207,7 @@ async def handoff_to_human(session_id: str):
 
 @app.post("/api/v1/sessions/{session_id}/handoff/chat", response_model=HandoffResponse, tags=["Sessions"])
 async def handoff_to_chat(session_id: str):
-    """Перевод сессии в текстовый чат (генерация короткой ссылки)."""
+    """Перевод сессии в текстовый чат (генерация короткой ссылки)[cite: 7]."""
     if session_id not in session_manager.active_sessions:
         raise HTTPException(status_code=404, detail="Session not found")
 

@@ -13,6 +13,17 @@ class GuardrailDecision(BaseModel):
 class GuardrailsService:
     def __init__(self):
         self.phone_regex = re.compile(r'\+375\s?\(?\d{2}\)?\s?\d{3}\s?-?\s?\d{2}\s?-?\s?\d{2}')
+        # Эвристика для отлова базовых инъекций в RAG-контенте
+        self.injection_patterns = re.compile(
+            r'(ignore\s+previous\s+instructions|забудь\s+инструкции|system\s+prompt|отключи\s+фильтры)',
+            re.IGNORECASE
+        )
+
+    def check_retrieved_content(self, text: str) -> bool:
+        """Проверяет найденный контент на наличие попыток перехвата управления."""
+        if self.injection_patterns.search(text):
+            return False
+        return True
 
     def process_input(self, text: str) -> GuardrailDecision:
         categories = []
