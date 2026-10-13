@@ -20,6 +20,7 @@ request reports ``first_chunk_ms`` for the latency budget.
 from __future__ import annotations
 
 import logging
+import os
 import wave
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -40,6 +41,21 @@ from speech.tts.preprocess import SileroStressPreprocessor, TextPreprocessor
 __all__ = ["SileroTTSAdapter", "SileroTTSConfig", "TTSEngine"]
 
 logger = logging.getLogger(__name__)
+
+# One process-wide desired thread count. The Silero frontend forces
+# torch.set_num_threads(1) at import and inside calls; engines built *after*
+# the first synthesis would otherwise capture 1 as their preferred value and
+# throttle every following engine (measured: Kokoro RTF 0.21 -> 0.82).
+_PREFERRED_THREADS: int | None = None
+
+
+def _remember_preferred_threads(torch_module: object) -> int:
+    global _PREFERRED_THREADS
+    if _PREFERRED_THREADS is None:
+        current = int(torch_module.get_num_threads())  # type: ignore[attr-defined]
+        half_cores = max(1, (os.cpu_count() or 2) // 2)
+        _PREFERRED_THREADS = max(current, half_cores)
+    return _PREFERRED_THREADS
 
 
 # Backwards-compatible name for the engine protocol used by tests.
@@ -148,19 +164,15 @@ class _PackagedSileroEngine:
             ) from exc
         self._torch = torch
         self._cfg = cfg
-        previous_threads = torch.get_num_threads()
         self._model = torch.package.PackageImporter(str(model_path)).load_pickle(
             "tts_models", "model"
         )
         self._model.to(torch.device("cpu"))
-        # IMPORTANT: the packaged Silero model calls torch.set_num_threads(1)
-        # during import. Left as-is it silently throttles every other torch
-        # engine in the process (measured: Kokoro RTF 0.21 -> 0.75). Restore
-        # the process-wide value right after the load.
-        torch.set_num_threads(previous_threads)
-        # v5_5_ru restores single-threading on *every* apply_tts call, so keep
-        # the desired value and re-apply it after each synthesis as well.
-        self._preferred_threads = previous_threads
+        # IMPORTANT: the packaged Silero model sets torch.set_num_threads(1)
+        # during import and inside every apply_tts call. Keep one process-wide
+        # preferred value (captured at the first engine) and re-apply it.
+        self._preferred_threads = _remember_preferred_threads(torch)
+        torch.set_num_threads(self._preferred_threads)
         symbols = getattr(self._model, "symbols", None)
         self._allowed_symbols: set[str] | None = (
             set(symbols) if symbols is not None else None
@@ -224,12 +236,11 @@ class _PipSileroEngine:
             ) from exc
         self._torch = torch
         self._cfg = cfg
-        previous_threads = torch.get_num_threads()
         self._model, _ = silero_tts(language="ru", speaker=cfg.model_id)
         self._model.to(torch.device("cpu"))
         # See _PackagedSileroEngine: the Silero code sets torch threads to 1.
-        torch.set_num_threads(previous_threads)
-        self._preferred_threads = previous_threads
+        self._preferred_threads = _remember_preferred_threads(torch)
+        torch.set_num_threads(self._preferred_threads)
 
     def synthesize(self, text: str, *, speaker: str, sample_rate: int) -> np.ndarray:
         try:
