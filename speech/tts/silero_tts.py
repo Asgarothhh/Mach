@@ -158,6 +158,9 @@ class _PackagedSileroEngine:
         # engine in the process (measured: Kokoro RTF 0.21 -> 0.75). Restore
         # the process-wide value right after the load.
         torch.set_num_threads(previous_threads)
+        # v5_5_ru restores single-threading on *every* apply_tts call, so keep
+        # the desired value and re-apply it after each synthesis as well.
+        self._preferred_threads = previous_threads
         symbols = getattr(self._model, "symbols", None)
         self._allowed_symbols: set[str] | None = (
             set(symbols) if symbols is not None else None
@@ -187,18 +190,23 @@ class _PackagedSileroEngine:
         self._warn_unsupported(text)
         kwargs = {"text": text, "speaker": speaker, "sample_rate": sample_rate}
         apply_tts = getattr(self._model, "apply_tts", None)
-        with self._torch.no_grad():
-            if apply_tts is not None:
-                try:
-                    audio = apply_tts(
-                        **kwargs,
-                        put_accent=self._cfg.put_accent,
-                        put_yo=self._cfg.put_yo,
-                    )
-                except TypeError:
-                    audio = apply_tts(**kwargs)
-                return _to_numpy(audio)
-            return _to_numpy(_save_wav_fallback(self._model, kwargs))
+        try:
+            with self._torch.no_grad():
+                if apply_tts is not None:
+                    try:
+                        audio = apply_tts(
+                            **kwargs,
+                            put_accent=self._cfg.put_accent,
+                            put_yo=self._cfg.put_yo,
+                        )
+                    except TypeError:
+                        audio = apply_tts(**kwargs)
+                    return _to_numpy(audio)
+                return _to_numpy(_save_wav_fallback(self._model, kwargs))
+        finally:
+            # The Silero frontend sets torch threads to 1 inside its calls;
+            # restore so other torch engines in the process are not throttled.
+            self._torch.set_num_threads(self._preferred_threads)
 
 
 class _PipSileroEngine:
@@ -221,17 +229,21 @@ class _PipSileroEngine:
         self._model.to(torch.device("cpu"))
         # See _PackagedSileroEngine: the Silero code sets torch threads to 1.
         torch.set_num_threads(previous_threads)
+        self._preferred_threads = previous_threads
 
     def synthesize(self, text: str, *, speaker: str, sample_rate: int) -> np.ndarray:
-        with self._torch.no_grad():
-            audio = self._model.apply_tts(
-                text=text,
-                speaker=speaker,
-                sample_rate=sample_rate,
-                put_accent=self._cfg.put_accent,
-                put_yo=self._cfg.put_yo,
-            )
-        return _to_numpy(audio)
+        try:
+            with self._torch.no_grad():
+                audio = self._model.apply_tts(
+                    text=text,
+                    speaker=speaker,
+                    sample_rate=sample_rate,
+                    put_accent=self._cfg.put_accent,
+                    put_yo=self._cfg.put_yo,
+                )
+            return _to_numpy(audio)
+        finally:
+            self._torch.set_num_threads(self._preferred_threads)
 
 
 def _save_wav_fallback(model: object, kwargs: dict) -> np.ndarray:
