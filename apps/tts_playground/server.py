@@ -25,9 +25,10 @@ from collections import defaultdict, deque
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import FastAPI, HTTPException, Request
+import numpy as np
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
@@ -331,6 +332,119 @@ async def synthesize(payload: SynthRequest, request: Request) -> Response:
     return Response(
         content=_to_wav(bytes(pcm), sample_rate), media_type="audio/wav", headers=headers
     )
+
+
+# ---------------------------------------------------------------------------
+# ASR (live transcription tester)
+# ---------------------------------------------------------------------------
+
+ASR_ENGINES: dict[str, tuple[str, str]] = {
+    "t-one": ("t-tech/t-one", "T-one (телефония, streaming-модель)"),
+    "gigaam-v3-ctc": ("gigaam-v3-ctc", "GigaAM v3 CTC (эталон качества)"),
+}
+
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+MAX_AUDIO_SECONDS = 60.0
+ASR_SAMPLE_RATE = 16000
+
+_asr_recognizers: dict[str, Any] = {}
+
+
+async def _get_asr(engine_key: str) -> Any:
+    recognizer = _asr_recognizers.get(engine_key)
+    if recognizer is not None:
+        return recognizer
+    async with _build_locks[engine_key]:
+        recognizer = _asr_recognizers.get(engine_key)
+        if recognizer is None:
+            from speech.asr.onnx_asr_adapter import OnnxAsrRecognizer
+
+            model_name = ASR_ENGINES[engine_key][0]
+            logger.info("building ASR model %s (first use)", model_name)
+            try:
+                recognizer = await asyncio.to_thread(OnnxAsrRecognizer, model_name)
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("ASR model build failed")
+                raise HTTPException(
+                    503, detail=f"ASR-модель недоступна: {type(exc).__name__}"
+                ) from exc
+            _asr_recognizers[engine_key] = recognizer
+    return recognizer
+
+
+def decode_audio_bytes(data: bytes) -> np.ndarray:
+    """Decode any common container (wav/mp3/ogg/webm/opus) to mono float32 @16k."""
+    import av
+
+    with av.open(io.BytesIO(data)) as container:
+        stream = container.streams.audio[0]
+        resampler = av.AudioResampler(format="fltp", layout="mono", rate=ASR_SAMPLE_RATE)
+        chunks: list[np.ndarray] = []
+        for frame in container.decode(stream):
+            for resampled in resampler.resample(frame):
+                chunks.append(resampled.to_ndarray().reshape(-1))
+        for resampled in resampler.resample(None):
+            chunks.append(resampled.to_ndarray().reshape(-1))
+    if not chunks:
+        raise ValueError("no audio frames decoded")
+    return np.concatenate(chunks).astype(np.float32)
+
+
+@app.get("/api/asr-engines")
+async def asr_engines() -> list[dict[str, str]]:
+    return [{"key": key, "title": title} for key, (_model, title) in ASR_ENGINES.items()]
+
+
+@app.post("/api/transcribe")
+async def transcribe(
+    request: Request,
+    file: Annotated[UploadFile, File()],
+    engine: Annotated[str, Form()] = "t-one",
+) -> dict[str, Any]:
+    client = request.client.host if request.client else "unknown"
+    _check_rate_limit(client)
+
+    if engine not in ASR_ENGINES:
+        raise HTTPException(404, detail="Неизвестный ASR-движок")
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, detail="Пустой файл")
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, detail="Файл слишком большой (максимум 25 МБ)")
+    try:
+        audio = await asyncio.to_thread(decode_audio_bytes, data)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            400, detail=f"Не удалось декодировать аудио: {type(exc).__name__}"
+        ) from exc
+    audio_seconds = len(audio) / ASR_SAMPLE_RATE
+    if audio_seconds > MAX_AUDIO_SECONDS:
+        raise HTTPException(413, detail="Аудио длиннее 60 секунд")
+
+    recognizer = await _get_asr(engine)
+    started = time.perf_counter()
+    try:
+        async with _synth_lock:
+            text = await asyncio.to_thread(recognizer.recognize, audio, ASR_SAMPLE_RATE)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("ASR recognition failed")
+        raise HTTPException(503, detail=f"Ошибка распознавания: {type(exc).__name__}") from exc
+    latency_ms = (time.perf_counter() - started) * 1000.0
+
+    logger.info(
+        "asr engine=%s audio=%.1fs latency=%.0fms rtf=%.3f",
+        engine,
+        audio_seconds,
+        latency_ms,
+        latency_ms / max(1.0, audio_seconds * 1000.0),
+    )
+    return {
+        "text": text.strip(),
+        "engine": engine,
+        "latency_ms": round(latency_ms),
+        "audio_ms": round(audio_seconds * 1000),
+        "rtf": round(latency_ms / max(1.0, audio_seconds * 1000.0), 3),
+    }
 
 
 def main() -> int:

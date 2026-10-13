@@ -92,6 +92,32 @@
     Лицензии движков — <code>LICENSES.md</code> в репозитории. Вернуться к
     <a href="https://mach.194-146-38-78.sslip.io/">странице ML-этапа</a> или
     <a href="https://mach.194-146-38-78.sslip.io/tts-ab.html">A/B-сравнению</a>.</p>
+
+  <div class="card">
+    <span class="badge" style="background:#2a9d5c">ASR</span>
+    <h1 style="font-size:20px; margin-top:0">Проверка распознавания</h1>
+    <p class="sub">Запишите фразу с микрофона или загрузите аудио — движок распознает её на стенде.</p>
+    <div class="row">
+      <div class="grow">
+        <label for="asr-engine">Движок</label>
+        <select id="asr-engine"></select>
+      </div>
+      <div class="grow">
+        <label>Аудио</label>
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap">
+          <button id="rec-btn" style="background:#e0453a; min-width:120px">● Запись</button>
+          <input type="file" id="asr-file" accept="audio/*">
+        </div>
+      </div>
+    </div>
+    <audio id="asr-player" controls style="display:none"></audio>
+    <div class="actions">
+      <button id="asr-go" disabled>Распознать</button>
+      <span class="status" id="asr-status"></span>
+    </div>
+    <div class="error" id="asr-error"></div>
+    <div class="metrics" id="asr-result" style="display:none"></div>
+  </div>
 </div>
 
 <script>
@@ -206,6 +232,108 @@ goBtn.addEventListener("click", synthesize);
 buildChips();
 updateCount();
 loadEngines();
+
+// ---------------------------------------------------------------------------
+// ASR: record / upload -> transcribe
+// ---------------------------------------------------------------------------
+
+let asrBlob = null;
+let asrRecorder = null;
+let asrChunks = [];
+
+function escapeHtml(value) {
+  return (value || "").replace(/[&<>"']/g, (c) => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+  ));
+}
+
+function asrError(message) {
+  const el = $("asr-error");
+  el.textContent = message;
+  el.style.display = "block";
+}
+
+function setAsrAudio(blob) {
+  asrBlob = blob;
+  const player = $("asr-player");
+  player.src = URL.createObjectURL(blob);
+  player.style.display = "block";
+  $("asr-go").disabled = false;
+  $("asr-result").style.display = "none";
+}
+
+async function loadAsrEngines() {
+  try {
+    const engines = await (await fetch("/api/asr-engines")).json();
+    $("asr-engine").innerHTML = engines
+      .map((e) => `<option value="${e.key}">${e.title}</option>`)
+      .join("");
+  } catch (err) {
+    asrError("Не удалось получить список ASR-движков: " + err);
+  }
+}
+
+$("asr-file").addEventListener("change", (event) => {
+  const file = event.target.files && event.target.files[0];
+  if (file) setAsrAudio(file);
+});
+
+$("rec-btn").addEventListener("click", async () => {
+  if (asrRecorder && asrRecorder.state === "recording") {
+    asrRecorder.stop();
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    asrChunks = [];
+    asrRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+    asrRecorder.ondataavailable = (event) => asrChunks.push(event.data);
+    asrRecorder.onstop = () => {
+      stream.getTracks().forEach((track) => track.stop());
+      $("rec-btn").textContent = "● Запись";
+      setAsrAudio(new Blob(asrChunks, { type: "audio/webm" }));
+    };
+    asrRecorder.start();
+    $("rec-btn").textContent = "■ Стоп";
+  } catch (err) {
+    asrError("Нет доступа к микрофону: " + err);
+  }
+});
+
+$("asr-go").addEventListener("click", async () => {
+  if (!asrBlob) return;
+  $("asr-error").style.display = "none";
+  $("asr-result").style.display = "none";
+  $("asr-go").disabled = true;
+  const form = new FormData();
+  form.append("file", asrBlob, "audio.webm");
+  form.append("engine", $("asr-engine").value);
+  const t0 = performance.now();
+  const tick = setInterval(() => {
+    $("asr-status").textContent = `Распознаю… ${((performance.now() - t0) / 1000).toFixed(1)} с`;
+  }, 200);
+  try {
+    const resp = await fetch("/api/transcribe", { method: "POST", body: form });
+    const data = await resp.json();
+    if (!resp.ok) {
+      asrError(data.detail || `HTTP ${resp.status}`);
+      return;
+    }
+    $("asr-result").innerHTML =
+      `<div style="font-size:16px; color:var(--text)">${escapeHtml(data.text) || "<i>пусто</i>"}</div>` +
+      `<div class="metrics">латентность: <b>${data.latency_ms} мс</b> · ` +
+      `аудио: <b>${data.audio_ms} мс</b> · RTF: <b>${data.rtf}</b> · движок: ${escapeHtml(data.engine)}</div>`;
+    $("asr-result").style.display = "block";
+  } catch (err) {
+    asrError("Сбой запроса: " + err);
+  } finally {
+    clearInterval(tick);
+    $("asr-status").textContent = "";
+    $("asr-go").disabled = false;
+  }
+});
+
+loadAsrEngines();
 </script>
 </body>
 </html>
