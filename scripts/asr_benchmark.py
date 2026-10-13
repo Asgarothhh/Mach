@@ -152,7 +152,9 @@ def evaluate_engine(
     total_process = 0.0
     total_audio = 0.0
 
-    for entry in selected:
+    for index, entry in enumerate(selected, start=1):
+        if index % 25 == 0:
+            print(f"  ... {index}/{len(selected)} processed", flush=True)
         audio, duration, rate = read_wav_mono(root / entry["audio"])
         audio = to_16k(audio, rate)
         started = time.perf_counter()
