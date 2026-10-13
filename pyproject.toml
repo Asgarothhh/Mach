@@ -10,8 +10,20 @@ dependencies = [
 
 [project.optional-dependencies]
 tts = ["torch>=2.4"]
+tts-stress = ["silero-stress"]
+tts-kokoro = [
+    "kokoro>=0.9.4",
+    "ruaccent>=1.5",
+    "misaki>=0.9.4",
+    "phonemizer>=3.3",
+    "huggingface-hub>=0.24",
+]
+# Chatterbox intentionally lives outside pyproject extras: chatterbox-tts pins
+# torch==2.6.0, so it deserves its own venv in CI. Install with:
+#   uv pip install chatterbox-tts
 vad = ["silero-vad>=5.1", "torch>=2.4"]
 asr = ["faster-whisper>=1.1", "sherpa-onnx>=1.10"]
+eval = ["faster-whisper>=1.1"]
 dev = [
     "pytest>=8.2",
     "pytest-asyncio>=0.23",
@@ -29,6 +41,7 @@ packages = ["speech"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+addopts = "-p no:hydra_pytest"
 markers = [
     "integration: requires local model weights, network access or heavy optional deps",
 ]
@@ -39,6 +52,10 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+# HTML template strings inside the report renderer are intentionally long.
+"scripts/tts_ab_eval.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.11"

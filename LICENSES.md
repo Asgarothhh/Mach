@@ -41,12 +41,37 @@
 | numpy | BSD-3-Clause | базовые операции с PCM | approved |
 | pydantic | MIT | контракты событий | approved |
 | pytest, pytest-asyncio, ruff, mypy | MIT / PSF / Apache-2.0 | dev/CI | approved |
-| torch (PyTorch) | BSD-3-Clause | исполнение Silero-моделей | approved |
+| torch (PyTorch) | BSD-3-Clause | исполнение моделей | approved |
 | silero-vad (pip) | MIT | VAD | approved |
-| faster-whisper | MIT | baseline ASR (кандидат) | candidate |
+| silero-stress (pip) | MIT | автоударения для CIS-base | approved |
+| faster-whisper | MIT | baseline ASR + WER-оценка | candidate |
 | sherpa-onnx | Apache-2.0 | streaming ASR (кандидат) | candidate |
+| kokoro (движок) | Apache-2.0 | Kokoro-ru | approved |
+| misaki (G2P для kokoro) | Apache-2.0 | G2P | approved |
+| ruaccent | MIT (репозиторий) / Apache-2.0 (PyPI) | ударения/омографы в ru_g2p | approved |
+| **phonemizer / phonemizer-fork** | **GPL-3.0** | backend G2P Kokoro-ru (через espeak-ng) | **требует review** |
+| **espeak-ng / espeakng-loader** | **GPL-3.0** (сама библиотека) | фонемизация Kokoro-ru | **требует review** |
+| s3tokenizer | Apache-2.0 | компонент Chatterbox | approved |
+| resemble-perth | MIT | watermark Chatterbox | approved |
+| **pykakasi** | **GPL-3.0** | транзитивная зависимость Chatterbox (только японский путь) | **требует review** |
+| conformer | MIT | компонент Chatterbox | approved |
+| utmosv2 (SaruLab) | MIT | MOS-оценка качества (eval) | approved |
 | piper1-gpl | GPL-3.0 | альтернативный TTS (кандидат) | review |
-| silero-stress | требует проверки | авторасстановка ударений | review |
+
+### GPL-3.0 в цепочке зависимостей (важно для production)
+
+- **Kokoro-ru**: веса OpenRAIL, но путь G2P идёт через `ru_g2p.py` →
+  `phonemizer` → `espeak-ng` (**GPL-3.0**).
+- **Chatterbox**: код и веса MIT, но в зависимостях есть `pykakasi`
+  (**GPL-3.0**, используется только для японского текста).
+
+Для **SaaS-эксплуатации** (сервис, к которому пользователи обращаются по сети,
+без распространения бинарей) GPL-компоненты обычно допустимы, но это должно
+быть подтверждено юристами для конкретной схемы поставки. Если распространение
+бинарной сборки планируется, нужно: для Kokoro — заменить espeak-на-фонемизацию
+на permissive-реализацию (их же рецепт + RUAccent); для Chatterbox — вырезать
+японский путь или заменить токенизатор. **Полностью permissive-чистая связка
+без GPL — это Silero `v5_cis_base_nostress` + `silero-stress` (MIT+MIT).**
 
 ## Модели и голоса
 
@@ -66,3 +91,60 @@
 - [ ] Провести license review для silero-stress (если используется с MIT-моделью).
 - [ ] Зафиксировать точные версии и SHA-256 всех весов в `config/models.lock.yaml`.
 - [ ] Не выдавать демостенд как production-готовый продукт (SSOT §1.2, §2.5).
+
+## Раунд 1: подбор коммерчески чистой замены Silero (2026-10-13)
+
+Задача: найти русский TTS «такого же качества», но с лицензией, допускающей
+коммерческое использование. Проверенные варианты:
+
+| Кандидат | Лицензия (код / веса) | Голос | Комментарий |
+|---|---|---|---|
+| **Silero v5_cis_base_nostress + silero-stress** | MIT / MIT | `ru_*` голоса (восточноевропейские актёры) | та же семья Silero; автоударения через silero-stress; без интонации вопросов; CPU |
+| **Chatterbox Multilingual V3** (Resemble AI) | MIT / MIT | встроенный голос, без референса | 23 языка вкл. ru; 24 кГц; AR 0.5B — нужен GPU; PerTh watermark; качество ru проверяется benchmark-ом |
+| **Kokoro-82M RU** (zaakirio/kokoro-ru) | Apache-2.0 / OpenRAIL | sveta, masha, dima (согласованные актёры) | 82M, RTF ~0.10 на CPU; детерминированная просодия; автоударения через RUAccent (MIT); ONNX для on-device |
+| **Piper ru** (SSOT §4.2 baseline) | GPL-3.0 / per-voice | зависит от голоса | лицензии голосов исторически неясные; качество ниже нейросетевых |
+| F5-TTS RU (Misha24-10) | код MIT, веса CC-BY-NC | клонирование | **некоммерческая** — отклонён |
+| Fish Speech / OpenAudio s1-mini | веса CC-BY-NC-SA | клонирование | **некоммерческая** — отклонён |
+| Qwen3-TTS 0.6B | Apache-2.0 | пресеты zh/en/ja/ko | ru поддержан, но «родного» русского голоса нет — нужен cloning с лицензированным референсом; отложен |
+| MOSS-TTS-Nano 100M | Apache-2.0 | cloning по референсу | CPU/streaming, но установка тяжёлая (WeTextProcessing); отложен |
+| VoxCPM / VoxCPM2 | Apache-2.0 | cloning | карточка VoxCPM прямо просит «research/development only» — флаг риска, не берём без нужды |
+
+Итог раунда (заполняется после прогона `scripts/tts_ab_eval.py`):
+- объективные метрики: first-chunk ms, RTF, WER-прокси (Whisper round-trip);
+- субъективный выбор голоса — прослушивание командой на
+  `https://mach.194-146-38-78.sslip.io/tts-ab.html`;
+- рекомендация по production-голосу — см. отчёт в PR/чате.
+
+### Результаты прогона 1 (2026-10-13, 7 конфигураций)
+
+Железо: 12-ядерный CPU + RTX 3060, torch 2.6.0; WER — Whisper large-v3-turbo
+(round-trip), MOS — UTMOSv2 (SaruLab). Числа числовых/телефонных фраз одинаково
+завышают WER у всех движков (артефакт формата чисел в ASR, не ошибка синтеза).
+
+| Движок | Лицензия | Первый чанк p50 | RTF | WER | MOS |
+|---|---|---:|---:|---:|---:|
+| Silero v5.5 RU xenia — демо-эталон | CC BY-NC-SA | 133 мс | 0.059 | 0.076 | 2.71 |
+| **Silero CIS-base + stress: ru_alexandr** | **MIT+MIT** | **137 мс** | **0.057** | **0.076** | **3.08** |
+| Silero CIS-base + stress: ru_albina | MIT+MIT | 152 мс | 0.056 | 0.076 | 2.97 |
+| Silero CIS-base + stress: ru_ekaterina | MIT+MIT | 148 мс | 0.057 | 0.076 | 2.87 |
+| Silero CIS-base + stress: ru_dmitriy | MIT+MIT | 161 мс | 0.056 | 0.076 | 2.59 |
+| Kokoro-82M RU sveta | OpenRAIL (+GPL-3 G2P) | 861 мс | 0.245 | **0.016** | 2.60 |
+| Chatterbox Multilingual V3 | MIT | 1850 мс | 0.609 | 0.253 | **3.10** |
+
+**Рекомендация по умолчанию: Silero `v5_cis_base_nostress` + `silero-stress`
+(MIT+MIT), голос-кандидат `ru_alexandr`.** Это «та же семья Silero»: MOS не
+хуже демо-эталона (3.08 против 2.71), WER идентичен, первый чанк ~137 мс,
+RTF ~0.057 на CPU, нативные 8/24/48 кГц (телефония). Единственное отличие от
+`v5_5_ru` — нет автоматической интонации вопросов (уточняющие вопросы агента
+будут звучать нейтрально).
+
+Нюансы по остальным:
+- **Kokoro-ru** — лучшая разборчивость (WER 0.016), но MOS ниже, first-chunk
+  ~0.9 c и GPL-3.0 в G2P-цепочке; годится для CPU/VPS-варианта после юр-ревью.
+- **Chatterbox V3** — высокий MOS, но WER 0.253 (галлюцинации, «кастой» вместо
+  «сколько стоит»), first-chunk 1.85 c и RTF 0.61; RU stress-модуль
+  (`russian_text_stresser`) вообще не опубликован. Для русского phone-агента
+  в текущем виде не подходит; оставляем как кандидат для пересмотра.
+
+Страница для прослушивания и голосования по голосам:
+`https://mach.194-146-38-78.sslip.io/tts-ab.html`.

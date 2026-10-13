@@ -149,3 +149,16 @@ def test_empty_segment_is_skipped() -> None:
 
     assert engine.calls == [("Нормальная фраза.", "xenia", 24000)]
     assert all(chunk.segment_id == 1 for chunk in chunks)
+
+
+def test_preprocessor_is_applied_before_engine() -> None:
+    engine = FakeEngine()
+    adapter = SileroTTSAdapter(
+        engine,
+        SileroTTSConfig(),
+        preprocessor=lambda text: text.replace("замок", "з+амок"),
+    )
+    chunks = asyncio.run(_collect_chunks(adapter, request("Это замок.")))
+
+    assert engine.calls[0][0] == "Это з+амок."  # engine gets stress marks
+    assert chunks[0].text == "Это замок."  # UI/log keeps clean text

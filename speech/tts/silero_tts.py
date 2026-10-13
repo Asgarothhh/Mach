@@ -9,7 +9,8 @@ Model choice / license status — see ``LICENSES.md`` and
   are therefore allowed for the demo stand only until a commercial license
   decision is recorded;
 * the MIT-licensed fallback is ``v5_cis_base_nostress`` (``ru_*`` speakers)
-  which needs explicit stress markup.
+  which needs explicit stress markup — combine it with
+  :class:`speech.tts.preprocess.SileroStressPreprocessor` (``stress=True``).
 
 Contract (SSOT §5.7): audio chunks carry chunk/segment/generation IDs so the
 orchestrator can drop chunks of cancelled generations; the first chunk of a
@@ -18,17 +19,13 @@ request reports ``first_chunk_ms`` for the latency budget.
 
 from __future__ import annotations
 
-import asyncio
-import time
 import wave
 from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Protocol, runtime_checkable
 
 import numpy as np
 from pydantic import BaseModel, Field
 
-from speech.audio import float32_to_pcm16, iter_pcm16_chunks
 from speech.contracts import (
     CancellationToken,
     ErrorCode,
@@ -36,16 +33,14 @@ from speech.contracts import (
     TTSChunk,
     TTSRequest,
 )
-from speech.text_norm import normalize_for_tts
+from speech.tts._streaming import SegmentEngine, synthesize_segments
+from speech.tts.preprocess import SileroStressPreprocessor, TextPreprocessor
 
 __all__ = ["SileroTTSAdapter", "SileroTTSConfig", "TTSEngine"]
 
 
-@runtime_checkable
-class TTSEngine(Protocol):
-    """Synchronous synthesis backend producing mono float32 audio in [-1; 1]."""
-
-    def synthesize(self, text: str, *, speaker: str, sample_rate: int) -> np.ndarray: ...
+# Backwards-compatible name for the engine protocol used by tests.
+TTSEngine = SegmentEngine
 
 
 class SileroTTSConfig(BaseModel):
@@ -65,9 +60,15 @@ class SileroTTSConfig(BaseModel):
 class SileroTTSAdapter:
     """Phrase-segmented streaming TTS on top of a Silero engine."""
 
-    def __init__(self, engine: TTSEngine, config: SileroTTSConfig | None = None) -> None:
+    def __init__(
+        self,
+        engine: SegmentEngine,
+        config: SileroTTSConfig | None = None,
+        preprocessor: TextPreprocessor | None = None,
+    ) -> None:
         self._engine = engine
         self.config = config or SileroTTSConfig()
+        self._preprocessor = preprocessor
 
     # -- construction -----------------------------------------------------
 
@@ -76,88 +77,42 @@ class SileroTTSAdapter:
         cls,
         config: SileroTTSConfig | None = None,
         model_path: str | Path | None = None,
+        *,
+        stress: bool = False,
     ) -> SileroTTSAdapter:
         """Build an adapter.
 
         ``model_path`` points to a pinned ``torch.package`` weight file
         (download with ``scripts/fetch_models.py``) — the preferred mode for
         demo/production: no surprise downloads at start (SSOT §12.1).
-        Without it the ``silero`` pip package downloads the model on demand —
-        dev convenience only.
+
+        ``stress=True`` enables :class:`SileroStressPreprocessor` (silero-stress,
+        MIT) — required by MIT-licensed ``v5_cis_base*`` models for Russian.
         """
         cfg = config or SileroTTSConfig()
         if model_path is not None:
-            engine: TTSEngine = _PackagedSileroEngine(cfg, Path(model_path))
+            engine: SegmentEngine = _PackagedSileroEngine(cfg, Path(model_path))
         else:
             engine = _PipSileroEngine(cfg)
-        return cls(engine, cfg)
+        preprocessor = SileroStressPreprocessor.from_pretrained() if stress else None
+        return cls(engine, cfg, preprocessor)
 
     # -- streaming synthesis ----------------------------------------------
 
     async def synthesize(
         self, request: TTSRequest, cancel: CancellationToken
     ) -> AsyncIterator[TTSChunk]:
-        cfg = self.config
-        speaker = request.speaker or cfg.speaker
-        sample_rate = request.sample_rate or cfg.sample_rate
-        started = time.perf_counter()
-        chunk_id = 0
-        first_chunk_ms: float | None = None
-        last_segment = len(request.segments) - 1
-
-        for segment_id, raw_text in enumerate(request.segments):
-            cancel.raise_if_cancelled()
-            normalized = normalize_for_tts(
-                raw_text, supports_question_intonation=cfg.supports_question_intonation
-            )
-            if not normalized.spoken:
-                continue
-
-            t0 = time.perf_counter()
-            try:
-                audio = await asyncio.to_thread(
-                    self._engine.synthesize,
-                    normalized.spoken,
-                    speaker=speaker,
-                    sample_rate=sample_rate,
-                )
-            except SpeechError:
-                raise
-            except Exception as exc:  # defensive: engine failure must be typed
-                raise SpeechError(
-                    ErrorCode.SYNTHESIS_FAILED, f"TTS engine failed: {exc}"
-                ) from exc
-            synthesis_ms = (time.perf_counter() - t0) * 1000.0
-
-            pcm = float32_to_pcm16(np.asarray(audio, dtype=np.float32).reshape(-1))
-            if len(pcm) == 0:
-                raise SpeechError(ErrorCode.SYNTHESIS_FAILED, "TTS produced empty audio")
-
-            chunks = list(
-                iter_pcm16_chunks(pcm, sample_rate=sample_rate, chunk_ms=cfg.max_chunk_ms)
-            )
-            for index, chunk_pcm in enumerate(chunks):
-                # Cancellation is checked between transport chunks; a segment
-                # itself is short by design, so barge-in latency stays bounded.
-                cancel.raise_if_cancelled()
-                is_first = chunk_id == 0
-                if is_first:
-                    first_chunk_ms = (time.perf_counter() - started) * 1000.0
-                yield TTSChunk(
-                    session_id=request.session_id,
-                    turn_id=request.turn_id,
-                    generation_id=request.generation_id,
-                    segment_id=segment_id,
-                    chunk_id=chunk_id,
-                    text=normalized.spoken,
-                    pcm_s16le=chunk_pcm,
-                    sample_rate=sample_rate,
-                    is_first_chunk=is_first,
-                    is_last_chunk=(segment_id == last_segment and index == len(chunks) - 1),
-                    first_chunk_ms=first_chunk_ms if is_first else None,
-                    synthesis_ms=synthesis_ms if index == 0 else None,
-                )
-                chunk_id += 1
+        async for chunk in synthesize_segments(
+            self._engine,
+            request,
+            cancel,
+            max_chunk_ms=self.config.max_chunk_ms,
+            default_speaker=self.config.speaker,
+            default_sample_rate=self.config.sample_rate,
+            supports_question_intonation=self.config.supports_question_intonation,
+            preprocessor=self._preprocessor,
+        ):
+            yield chunk
 
 
 # ---------------------------------------------------------------------------
@@ -209,7 +164,7 @@ class _PackagedSileroEngine:
                 except TypeError:
                     audio = apply_tts(**kwargs)
                 return _to_numpy(audio)
-            return _to_numpy(_save_wav_fallback(self._model, self._torch, kwargs))
+            return _to_numpy(_save_wav_fallback(self._model, kwargs))
 
 
 class _PipSileroEngine:
@@ -242,7 +197,7 @@ class _PipSileroEngine:
         return _to_numpy(audio)
 
 
-def _save_wav_fallback(model: object, torch_module: object, kwargs: dict) -> np.ndarray:
+def _save_wav_fallback(model: object, kwargs: dict) -> np.ndarray:
     """Fallback for packaged models without ``apply_tts``: save_wav + read back."""
     import tempfile
 

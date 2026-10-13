@@ -48,16 +48,111 @@ entries:
     title: "Silero TTS v5 CIS base (nostress) — ru_* speakers"
     source_url: https://models.silero.ai/models/tts/ru/v5_cis_base_nostress.pt
     sample_rates: [8000, 24000, 48000]
-    sha256: null
+    sha256: "0405777e332906f0644e08a680f7cfdc2137ea864090079c1fdd30a43c1b8761"
     license:
       code: "MIT (LICENSE_CIS)"
       weights: MIT
     commercial_use: allowed
-    status: candidate
+    status: benchmark
     notes: >
       MIT-licensed fallback for production: ru_* speakers need explicit stress
-      markup for Slavic languages (pair with silero-stress tooling after its
-      license is reviewed). No question intonation.
+      markup — combine with `silero-stress` (see below). No question
+      intonation. Benchmark vs other commercial-safe engines: scripts/tts_ab_eval.py.
+  - id: silero-stress
+    kind: text-preprocessor
+    title: "Silero Stress — automated stress + homograph disambiguation (RU)"
+    source_url: https://github.com/snakers4/silero-stress
+    pin: "TODO: pin pip version after first install"
+    sha256: null
+    license:
+      code: MIT
+      weights: MIT
+    commercial_use: allowed
+    status: approved-dev
+    notes: >
+      Adds stress marks ("+" before the stressed vowel); ~4M word forms,
+      ~0.5 ms/word on one CPU thread, ~50 MB. Required by MIT v5_cis_base*
+      models for Russian.
+  - id: chatterbox-multilingual-v3
+    kind: tts
+    title: "Chatterbox Multilingual V3 (Resemble AI), built-in default voice"
+    source_url: https://huggingface.co/ResembleAI/chatterbox
+    pin: "t3_model=v3 (pin HF revision after benchmark)"
+    sha256: null
+    license:
+      code: MIT
+      weights: MIT
+    commercial_use: allowed
+    status: benchmark
+    notes: >
+      Russian among 23 languages; 24 kHz; AR 0.5B — GPU strongly recommended.
+      Built-in default voice needs no reference clip; every output carries the
+      PerTh watermark. Integrated in speech/tts/chatterbox_tts.py.
+  - id: kokoro-ru-v2
+    kind: tts
+    title: "Kokoro-82M Russian port (zaakirio/kokoro-ru): sveta / masha / dima"
+    source_url: https://huggingface.co/zaakirio/kokoro-ru
+    pin: "kokoro-ru-v2-base.pth / kokoro-ru-v2-dima.pth (sha256 pending fetch)"
+    sha256: null
+    license:
+      code: "Apache-2.0 (release code), MIT (ru_g2p + RUAccent)"
+      weights: "OpenRAIL"
+    commercial_use: "conditional (OpenRAIL use restrictions)"
+    status: benchmark
+    notes: >
+      82M params, published RTF ~0.10 on laptop CPU; three voices from
+      consented studio actors (Dialogs corpus); automatic stress via RUAccent;
+      ONNX export exists for on-device deployment. Integrated in
+      speech/tts/kokoro_tts.py.
+  - id: ruaccent
+    kind: text-preprocessor
+    title: "RUAccent — stress/homographs for Russian (dependency of kokoro-ru G2P)"
+    source_url: https://github.com/Den4ikAI/ruaccent
+    license:
+      code: "MIT (repo) / Apache-2.0 (PyPI classifier)"
+      weights: "MIT/Apache-2.0"
+    commercial_use: allowed
+    status: approved-dev
+    notes: "Used only by the Kokoro-ru Russian G2P pipeline (Apache-2.0 phonemizer note: see LICENSES.md)."
+  - id: utmosv2
+    kind: eval-tool
+    title: "UTMOSv2 (SaruLab) — naturalness MOS predictor for the A/B benchmark"
+    source_url: https://github.com/sarulab-speech/UTMOSv2
+    pin: "git commit cc2700db57bb83ee13dc31ebe1b868c254e15d09 (v1.3.1.dev0)"
+    sha256: null
+    license:
+      code: MIT
+      weights: MIT
+    commercial_use: allowed
+    status: approved-eval
+    notes: "Evaluation-only tool (not part of the call path); MOS values are a proxy, final voice choice is made by listening."
+  - id: qwen3-tts-12hz-0.6b
+    kind: tts-candidate
+    title: "Qwen3-TTS 12Hz 0.6B (CustomVoice / Base)"
+    source_url: https://huggingface.co/Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice
+    license:
+      code: Apache-2.0
+      weights: Apache-2.0
+    commercial_use: allowed
+    status: candidate-not-integrated
+    notes: >
+      Russian among 10 languages, streaming latency ~97 ms claimed. Built-in
+      speakers are Chinese/EN/JA/KO natives — a Russian production voice would
+      require cloning from a licensed reference. Not integrated in round 1;
+      revisit if a Russian voice-design pass is needed.
+  - id: moss-tts-nano-100m
+    kind: tts-candidate
+    title: "MOSS-TTS-Nano 100M (OpenMOSS)"
+    source_url: https://huggingface.co/OpenMOSS-Team/MOSS-TTS-Nano-100M
+    license:
+      code: Apache-2.0
+      weights: Apache-2.0
+    commercial_use: "allowed (repo README contains a redistribution caveat — verify LICENSE file before production)"
+    status: candidate-not-integrated
+    notes: >
+      0.1B, CPU-friendly streaming TTS, 20 languages incl. Russian; voice-clone
+      workflow requires a reference clip; install pulls WeTextProcessing
+      (pynini) — heavier setup. Not integrated in round 1.
   - id: faster-whisper-large-v3-turbo
     kind: asr-baseline
     title: "faster-whisper / Whisper large-v3-turbo"
