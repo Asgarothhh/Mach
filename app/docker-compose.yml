@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      # Внутри Docker хост базы данных — это имя сервиса "postgres"
+      - DATABASE_URL=postgresql+asyncpg://admin:secret@postgres:5432/voice_agent
+      - SYNC_DATABASE_URL=postgresql+psycopg2://admin:secret@postgres:5432/voice_agent
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - ENVIRONMENT=demo
+    # Автоматический накат миграций перед запуском сервера
+    command: >
+      sh -c "alembic upgrade head && 
+             uvicorn app.api.main:app --host 0.0.0.0 --port 8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=secret
+      - POSTGRES_DB=voice_agent
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d voice_agent"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
