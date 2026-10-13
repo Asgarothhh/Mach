@@ -16,7 +16,12 @@ changing the contract.
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import ctypes
+import glob
+import sysconfig
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 import numpy as np
@@ -25,7 +30,39 @@ from pydantic import BaseModel, Field
 from speech.audio import pcm16_to_float32
 from speech.contracts import ASREvent, AudioFrame, ErrorCode, SpeechError
 
-__all__ = ["OnnxAsrAdapter", "OnnxAsrConfig", "OnnxAsrRecognizer", "Recognizer"]
+__all__ = [
+    "OnnxAsrAdapter",
+    "OnnxAsrConfig",
+    "OnnxAsrRecognizer",
+    "Recognizer",
+    "preload_cuda_libraries",
+]
+
+
+def preload_cuda_libraries() -> None:
+    """Preload CUDA runtime libs shipped with torch so onnxruntime (and
+    ctranslate2) can dlopen them on Linux.
+
+    The nvidia-* wheels put the shared libraries under
+    ``site-packages/nvidia/*/lib``, which is not in the default loader search
+    path; loading them with ``RTLD_GLOBAL`` registers their sonames so the
+    provider library resolves its ``DT_NEEDED`` entries.
+    """
+    site = Path(sysconfig.get_paths()["purelib"])
+    patterns = (
+        "nvidia/cuda_runtime/lib/libcudart.so.12*",
+        "nvidia/cuda_nvrtc/lib/libnvrtc.so.12*",
+        "nvidia/nvjitlink/lib/libnvjitlink.so.12*",
+        "nvidia/cublas/lib/libcublas.so.12*",
+        "nvidia/cublas/lib/libcublasLt.so.12*",
+        "nvidia/cudnn/lib/libcudnn.so.9*",
+        "nvidia/cufft/lib/libcufft.so.11*",
+        "nvidia/curand/lib/libcurand.so.10*",
+    )
+    for pattern in patterns:
+        for path in sorted(glob.glob(str(site / pattern))):
+            with contextlib.suppress(OSError):
+                ctypes.CDLL(path, mode=ctypes.RTLD_GLOBAL)
 
 
 @runtime_checkable
@@ -40,6 +77,9 @@ class OnnxAsrConfig(BaseModel):
 
     model: str = Field(default="t-tech/t-one", description="onnx-asr model name")
     quantization: str | None = None
+    device: str = Field(
+        default="auto", description="auto | cuda | cpu (onnxruntime execution providers)"
+    )
     sample_rate: int = Field(default=16000, gt=0)
     max_segment_seconds: float = Field(
         default=20.0,
@@ -49,17 +89,37 @@ class OnnxAsrConfig(BaseModel):
 
 
 class OnnxAsrRecognizer:
-    """Thin wrapper around ``onnx_asr.load_model`` (lazy import)."""
+    """Thin wrapper around ``onnx_asr.load_model`` (lazy import).
 
-    def __init__(self, model: str, quantization: str | None = None) -> None:
+    ``device="auto"`` picks CUDA when the onnxruntime GPU provider is available.
+    """
+
+    def __init__(
+        self, model: str, quantization: str | None = None, device: str = "auto"
+    ) -> None:
         try:
             import onnx_asr
+            import onnxruntime
         except ImportError as exc:  # pragma: no cover - depends on env
             raise SpeechError(
                 ErrorCode.MODEL_UNAVAILABLE,
                 "onnx-asr is required; install with `pip install onnx-asr[cpu,hub]`",
             ) from exc
-        self._model = onnx_asr.load_model(model, quantization=quantization)
+        if device == "auto":
+            device = (
+                "cuda"
+                if "CUDAExecutionProvider" in onnxruntime.get_available_providers()
+                else "cpu"
+            )
+        providers = None
+        if device == "cuda":
+            preload_cuda_libraries()
+            providers = [
+                ("CUDAExecutionProvider", {"device_id": 0, "cudnn_conv_algo_search": "EXHAUSTIVE"}),
+                "CPUExecutionProvider",
+            ]
+        self.device = device
+        self._model = onnx_asr.load_model(model, quantization=quantization, providers=providers)
 
     def recognize(self, samples: np.ndarray, sample_rate: int) -> str:
         result = self._model.recognize(samples, sample_rate=sample_rate)
@@ -80,7 +140,7 @@ class OnnxAsrAdapter:
     @classmethod
     def from_pretrained(cls, config: OnnxAsrConfig | None = None) -> OnnxAsrAdapter:
         cfg = config or OnnxAsrConfig()
-        return cls(OnnxAsrRecognizer(cfg.model, cfg.quantization), cfg)
+        return cls(OnnxAsrRecognizer(cfg.model, cfg.quantization, cfg.device), cfg)
 
     async def stream(self, audio_frames: AsyncIterator[AudioFrame]) -> AsyncIterator[ASREvent]:
         cfg = self.config

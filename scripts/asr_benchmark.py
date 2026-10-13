@@ -45,10 +45,28 @@ class EngineDef:
     build: Callable[[], RecognizerFn]
 
 
-def _build_onnx(name: str) -> RecognizerFn:
+def _onnx_providers(device: str) -> list | None:
+    if device == "cpu":
+        return None
+    import onnxruntime
+
+    from speech.asr.onnx_asr_adapter import preload_cuda_libraries
+
+    if "CUDAExecutionProvider" in onnxruntime.get_available_providers():
+        preload_cuda_libraries()
+        # EXHAUSTIVE is required: the default cudnn-frontend plan search fails
+        # on the depthwise convs of conformer-style encoders (T-one/GigaAM).
+        return [
+            ("CUDAExecutionProvider", {"device_id": 0, "cudnn_conv_algo_search": "EXHAUSTIVE"}),
+            "CPUExecutionProvider",
+        ]
+    return None
+
+
+def _build_onnx(name: str, device: str = "auto") -> RecognizerFn:
     import onnx_asr
 
-    model = onnx_asr.load_model(name)
+    model = onnx_asr.load_model(name, providers=_onnx_providers(device))
 
     def recognize(samples: np.ndarray) -> str:
         result = model.recognize(samples, sample_rate=16000)
@@ -61,10 +79,39 @@ def _build_onnx(name: str) -> RecognizerFn:
     return recognize
 
 
-def _build_whisper() -> RecognizerFn:
+def _preload_ct2_cuda_libs() -> None:
+    """Preload cuBLAS/cuDNN shipped with torch so ctranslate2 can dlopen them."""
+    import ctypes
+    import glob
+    import sysconfig
+    from pathlib import Path
+
+    site = Path(sysconfig.get_paths()["purelib"])
+    patterns = (
+        "nvidia/cublas/lib/libcublas.so.12*",
+        "nvidia/cublas/lib/libcublasLt.so.12*",
+        "nvidia/cudnn/lib/libcudnn*.so*",
+    )
+    for pattern in patterns:
+        for path in sorted(glob.glob(str(site / pattern))):
+            try:
+                ctypes.CDLL(path, mode=ctypes.RTLD_GLOBAL)
+            except OSError:
+                continue
+
+
+def _build_whisper(device: str = "auto") -> RecognizerFn:
     from faster_whisper import WhisperModel
 
-    model = WhisperModel("large-v3-turbo", device="cpu", compute_type="int8")
+    model = None
+    if device in ("auto", "cuda"):
+        try:
+            _preload_ct2_cuda_libs()
+            model = WhisperModel("large-v3-turbo", device="cuda", compute_type="float16")
+        except Exception:  # noqa: BLE001 - cuDNN/cuBLAS may be unavailable
+            model = None
+    if model is None:
+        model = WhisperModel("large-v3-turbo", device="cpu", compute_type="int8")
 
     def recognize(samples: np.ndarray) -> str:
         segments, _info = model.transcribe(samples.astype(np.float32), language="ru", beam_size=5)
@@ -73,35 +120,35 @@ def _build_whisper() -> RecognizerFn:
     return recognize
 
 
-def engine_registry() -> dict[str, EngineDef]:
+def engine_registry(device: str = "auto") -> dict[str, EngineDef]:
     return {
         "t-one": EngineDef(
             key="t-one",
             title="T-one (T-Tech, 71M, телефония)",
             license="Apache-2.0",
             mode="streaming-native",
-            build=lambda: _build_onnx("t-tech/t-one"),
+            build=lambda: _build_onnx("t-tech/t-one", device),
         ),
         "gigaam-v3-ctc": EngineDef(
             key="gigaam-v3-ctc",
             title="GigaAM v3 CTC (Сбер, 242M)",
             license="MIT",
             mode="offline",
-            build=lambda: _build_onnx("gigaam-v3-ctc"),
+            build=lambda: _build_onnx("gigaam-v3-ctc", device),
         ),
         "vosk-small-ru": EngineDef(
             key="vosk-small-ru",
             title="Vosk small ru (20M, стриминг)",
             license="Apache-2.0",
             mode="streaming-capable",
-            build=lambda: _build_onnx("alphacep/vosk-model-small-ru"),
+            build=lambda: _build_onnx("alphacep/vosk-model-small-ru", device),
         ),
         "whisper-turbo": EngineDef(
             key="whisper-turbo",
             title="Whisper large-v3-turbo (baseline)",
             license="MIT",
             mode="offline",
-            build=_build_whisper,
+            build=lambda: _build_whisper(device),
         ),
     }
 
@@ -284,7 +331,15 @@ synthetic-* — доменные фразы (числа/телефоны/УСС�
 def hardware_note() -> str:
     import platform
 
-    return f"CPU {platform.processor() or 'x86_64'}, onnxruntime + faster-whisper int8"
+    try:
+        import onnxruntime
+        import torch
+
+        gpu = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "no CUDA"
+        providers = ",".join(onnxruntime.get_available_providers())
+    except Exception:  # noqa: BLE001
+        gpu, providers = "n/a", "n/a"
+    return f"CPU {platform.processor() or 'x86_64'} · GPU {gpu} · onnxruntime [{providers}]"
 
 
 def main() -> int:
@@ -292,6 +347,9 @@ def main() -> int:
     parser.add_argument("--manifest", default="artifacts/asr_benchmark/manifest.jsonl")
     parser.add_argument("--out", default="artifacts/asr_benchmark")
     parser.add_argument("--engines", default="", help="comma-separated engine keys")
+    parser.add_argument(
+        "--device", default="auto", choices=["auto", "cuda", "cpu"], help="inference device"
+    )
     parser.add_argument("--limit", type=int, default=0, help="limit utterances per engine")
     parser.add_argument("--html", default="", help="optional HTML report path")
     args = parser.parse_args()
@@ -307,7 +365,7 @@ def main() -> int:
     ]
     root = manifest_path.parent
 
-    registry = engine_registry()
+    registry = engine_registry(args.device)
     selected = (
         [registry[key] for key in args.engines.split(",") if key]
         if args.engines
