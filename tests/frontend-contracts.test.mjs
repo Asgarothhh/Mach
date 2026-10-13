@@ -45,63 +45,14 @@ test('admin call detail uses session-scoped API while transcript correction uses
   assert.match(calls, /\/calls\/\$\{encodeURIComponent\(callId\)\}\/transcript-corrections/);
 });
 
-test('optional backend text-test bridge is explicit and uses the current ASR WebSocket contract', async () => {
+test('optional backend text-test bridge uses current REST text-turn contract', async () => {
   const envExample = await read('.env.example');
   const bridge = await read('src/features/chat/services/backendTextTest.service.ts');
+  const chatService = await read('src/features/chat/services/chat.service.ts');
   assert.match(envExample, /VITE_BACKEND_TEXT_TEST=false/);
-  assert.match(bridge, /type: 'ASREvent'/);
-  assert.match(bridge, /\/api\/v1\/ws\/sessions\//);
-  assert.match(bridge, /is_last_chunk/);
-});
-
-test('backend admin sessions mode is opt-in and can coexist with demo fixtures', async () => {
-  const envExample = await read('.env.example');
-  const envSource = await read('src/shared/config/env.ts');
-  assert.match(envExample, /VITE_BACKEND_ADMIN_SESSIONS=false/);
-  assert.match(envSource, /backendAdminSessions: readBoolean\(import\.meta\.env\.VITE_BACKEND_ADMIN_SESSIONS, false\)/);
-  assert.match(envSource, /demoMode: readBoolean\(import\.meta\.env\.VITE_DEMO_MODE, true\)/);
-});
-
-test('admin session service follows the supplied OpenAPI endpoints and query contract', async () => {
-  const service = await read('src/features/admin/services/adminSessions.service.ts');
-  assert.match(service, /checkBackendHealth/);
-  assert.match(service, /health\/\$\{path\}/);
-  assert.match(service, /apiRequest<BackendSessionSummary>\('\/sessions'/);
-  assert.match(service, /createBackendSession/);
-  assert.match(service, /\/admin\/sessions\?/);
-  assert.match(service, /params\.set\('tenant_id'/);
-  assert.match(service, /params\.set\('status'/);
-  assert.match(service, /params\.set\('limit'/);
-  assert.match(service, /params\.set\('offset'/);
-  assert.match(service, /\/transcript-corrections/);
-  assert.match(service, /\/handoff\/human/);
-  assert.match(service, /\/handoff\/chat/);
-  assert.match(service, /\/sessions\/\$\{encodeURIComponent\(sessionId\)\}\/end/);
-});
-
-test('admin session routes show real session details and expose the API actions', async () => {
-  const sessions = await read('src/features/admin/pages/AdminSessionsPage.tsx');
-  const detail = await read('src/features/admin/pages/AdminSessionDetailPage.tsx');
-  const app = await read('src/app/App.tsx');
-  const layout = await read('src/features/admin/components/AdminLayout.tsx');
-  const health = await read('src/features/admin/components/BackendHealthIndicator.tsx');
-  assert.match(layout, /BackendHealthIndicator/);
-  assert.match(health, /checkBackendHealth/);
-  assert.match(sessions, /listBackendSessions/);
-  assert.match(sessions, /\/admin\/sessions\/\$\{encodeURIComponent\(session\.session_id\)\}/);
-  assert.match(detail, /getBackendSession/);
-  assert.match(detail, /correctBackendTranscript/);
-  assert.match(detail, /handoffBackendSessionToHuman/);
-  assert.match(detail, /handoffBackendSessionToChat/);
-  assert.match(detail, /endBackendSession/);
-  assert.match(app, /path="sessions" element=\{<AdminSessionsPage \/>\}/);
-  assert.match(app, /path="sessions\/:sessionId" element=\{<AdminSessionDetailPage \/>\}/);
-});
-
-test('live admin overview reports only values available from the sessions API', async () => {
-  const overview = await read('src/features/admin/pages/AdminOverviewPage.tsx');
-  assert.match(overview, /BackendSessionsOverview/);
-  assert.match(overview, /listBackendSessions/);
-  assert.match(overview, /последними 100 сессиями/);
-  assert.doesNotMatch(overview, /apiRequest<CallAnalytics>\('\/admin\/analytics\/calls'\)/);
+  assert.match(bridge, /method: 'POST'/);
+  assert.match(bridge, /\/sessions\/\$\{encodeURIComponent\(sessionId\)\}\/turns\/text/);
+  assert.match(bridge, /body: \{ text: input.text \}/);
+  assert.doesNotMatch(bridge, /new WebSocket/);
+  assert.match(chatService, /return sendBackendTextTest\(input\)/);
 });

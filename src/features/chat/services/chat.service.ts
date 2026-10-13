@@ -1,5 +1,4 @@
 import { env } from '../../../shared/config/env';
-import { apiRequest } from '../../../shared/api/http';
 import type { SourceCitation } from '../../../shared/types/api';
 import { demoSources, demoAnswer } from '../../knowledge/data/demoSources';
 import { sendBackendTextTest } from './backendTextTest.service';
@@ -42,13 +41,6 @@ export async function sendTextMessage(
     };
   }
 
-  // CONTRACT GAP: POST /sessions/{id}/messages is not specified in SPEC_MTS_VOICE_AGENT.md.
-  // Agree on the request/response schema with backend before using text mode against a real API.
-  if (!input.sessionId) {
-    throw new Error('Текстовый endpoint ещё не согласован с backend для сессии без LiveKit.');
-  }
-  return apiRequest<SendTextMessageResult>(
-    `/sessions/${encodeURIComponent(input.sessionId)}/messages`,
-    { method: 'POST', body: { text: input.text } },
-  );
+  // The current backend exposes text turns as REST, not POST /messages or a WebSocket ASREvent.
+  return sendBackendTextTest(input);
 }
