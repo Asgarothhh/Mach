@@ -208,9 +208,16 @@ def write_wav(path: Path, pcm_s16le: bytes, sample_rate: int) -> None:
 
 
 def load_whisper() -> Any:
+    """Whisper round-trip judge: CUDA fp16 when possible, CPU int8 fallback."""
     from faster_whisper import WhisperModel
 
-    return WhisperModel("large-v3-turbo", device="cpu", compute_type="int8")
+    try:
+        from speech.asr.onnx_asr_adapter import preload_cuda_libraries
+
+        preload_cuda_libraries()
+        return WhisperModel("large-v3-turbo", device="cuda", compute_type="float16")
+    except Exception:  # noqa: BLE001 - no CUDA/cuDNN on this machine
+        return WhisperModel("large-v3-turbo", device="cpu", compute_type="int8")
 
 
 def read_wav_float32(path: Path) -> tuple[np.ndarray, int]:

@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import re
 
+from speech.number_norm import integer_to_words_ru
+
 __all__ = [
     "cer",
     "char_edit_units",
@@ -21,13 +23,27 @@ __all__ = [
 
 _NON_WORD_RE = re.compile(r"[^а-яa-zё0-9\s]")
 _WHITESPACE_RE = re.compile(r"\s+")
+_DIGITS_RE = re.compile(r"\d+")
+
+
+def _expand_digits(match: re.Match[str]) -> str:
+    return integer_to_words_ru(int(match.group(0)))
 
 
 def normalize_text(text: str) -> str:
-    """Lowercase, ё→е, strip punctuation, collapse whitespace."""
+    """Lowercase, ё→е, strip punctuation, collapse whitespace.
+
+    Digits are expanded to Russian words on both sides of a comparison:
+    datasets spell numbers out while ASR outputs digits (or vice versa), and
+    otherwise the word-level comparison would count a correct number as an
+    error. E.g. "100 рублей" and "сто рублей" normalize identically.
+    """
     text = text.lower().replace("ё", "е")
     text = _NON_WORD_RE.sub(" ", text)
-    return _WHITESPACE_RE.sub(" ", text).strip()
+    text = _WHITESPACE_RE.sub(" ", text).strip()
+    if any(char.isdigit() for char in text):
+        text = _DIGITS_RE.sub(_expand_digits, text)
+    return text
 
 
 def _edit_distance(reference: list[str], hypothesis: list[str]) -> int:
