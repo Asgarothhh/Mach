@@ -7,7 +7,6 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Копируем общие пакеты и код воркера
-COPY packages/ ./packages/
 COPY app/ ./app/
 
 # Воркер не слушает HTTP порты, он подключается к брокеру/LiveKit
