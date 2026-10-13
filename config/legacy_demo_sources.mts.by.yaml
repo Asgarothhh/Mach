@@ -1,0 +1,201 @@
+# Legacy MTS Belarus demo corpus (SSOT §17 "Наследуемые демо-источники").
+# Fixture tenant only: never mixed with business tenants, never default agent knowledge
+# (SSOT §6.1). Loaded with RegistryPurpose.LEGACY_DEMO.
+# The list is a starting registry, not a claim that each URL is crawlable (SSOT §17).
+schema_version: 1
+tenants:
+  - tenant_id: mts-public-demo
+    registry_version: 1
+    display_name: "MTS Belarus public demo corpus (legacy fixture, SSOT §17)"
+    updated_at: "2026-10-13T10:00:00Z"
+    allowed_hosts:
+      - www.mts.by
+      - ihelper.mts.by
+      - internet.mts.by
+      - tv.mts.by
+      - shop.mts.by
+      - dengi.mts.by
+      - lk.landing.mts.by
+      - help.mts.by
+    sources:
+      - source_id: mts-help
+        tenant_id: mts-public-demo
+        url: https://www.mts.by/help/
+        kind: web_section
+        priority: P0
+        allow_path_prefixes: [/help]
+        refresh_interval: P1D
+        freshness_class: service_page
+        language: ru
+        audience: caller
+        status: active
+        owner: role.demo-fixture-maintainer
+        approval:
+          status: approved
+          approved_by: role.demo-fixture-maintainer
+          approved_at: "2026-10-13T09:00:00Z"
+
+      - source_id: mts-company
+        tenant_id: mts-public-demo
+        url: https://www.mts.by/company/comp/
+        kind: web_section
+        priority: P1
+        allow_path_prefixes: [/company/comp]
+        refresh_interval: P7D
+        freshness_class: static_reference
+        language: ru
+        audience: caller
+        status: active
+        owner: role.demo-fixture-maintainer
+        approval:
+          status: approved
+          approved_by: role.demo-fixture-maintainer
+          approved_at: "2026-10-13T09:00:00Z"
+
+      - source_id: mts-contacts
+        tenant_id: mts-public-demo
+        url: https://www.mts.by/company/comp/contact/
+        kind: web_page
+        priority: P0
+        allow_path_prefixes: [/company/comp/contact]
+        refresh_interval: PT6H
+        freshness_class: dynamic_conditions
+        language: ru
+        audience: caller
+        status: active
+        owner: role.demo-fixture-maintainer
+        approval:
+          status: approved
+          approved_by: role.demo-fixture-maintainer
+          approved_at: "2026-10-13T09:00:00Z"
+
+      - source_id: mts-documents
+        tenant_id: mts-public-demo
+        url: https://www.mts.by/company/comp/doc/
+        kind: web_section
+        priority: P1
+        allow_path_prefixes: [/company/comp/doc]
+        refresh_interval: P1D
+        freshness_class: legal
+        language: ru
+        audience: caller
+        status: active
+        owner: role.demo-fixture-maintainer
+        approval:
+          status: approved
+          approved_by: role.demo-fixture-maintainer
+          approved_at: "2026-10-13T09:00:00Z"
+
+      - source_id: mts-ihelper-selfcare
+        tenant_id: mts-public-demo
+        url: https://ihelper.mts.by/selfcare/
+        kind: web_page
+        priority: P2
+        allow_path_prefixes: [/selfcare]
+        refresh_interval: P7D
+        language: ru
+        audience: caller
+        status: excluded
+        exclusion_reason: "auth_area: SSOT §6.2.3 forbids /selfcare (contradiction C6 with §17)"
+        owner: role.demo-fixture-maintainer
+        approval:
+          status: rejected
+
+      - source_id: mts-home-internet
+        tenant_id: mts-public-demo
+        url: https://internet.mts.by/
+        kind: web_section
+        priority: P1
+        allow_path_prefixes: [/]
+        refresh_interval: P1D
+        freshness_class: service_page
+        language: ru
+        audience: caller
+        status: active
+        owner: role.demo-fixture-maintainer
+        approval:
+          status: approved
+          approved_by: role.demo-fixture-maintainer
+          approved_at: "2026-10-13T09:00:00Z"
+
+      - source_id: mts-tv
+        tenant_id: mts-public-demo
+        url: https://tv.mts.by/
+        kind: web_section
+        priority: P1
+        allow_path_prefixes: [/]
+        refresh_interval: P1D
+        freshness_class: service_page
+        language: ru
+        audience: caller
+        status: active
+        owner: role.demo-fixture-maintainer
+        approval:
+          status: approved
+          approved_by: role.demo-fixture-maintainer
+          approved_at: "2026-10-13T09:00:00Z"
+
+      - source_id: mts-shop
+        tenant_id: mts-public-demo
+        url: https://shop.mts.by/
+        kind: web_section
+        priority: P2
+        allow_path_prefixes: [/]
+        deny_path_prefixes: [/cart, /checkout, /basket, /order, /personal]
+        refresh_interval: P1D
+        freshness_class: dynamic_conditions
+        language: ru
+        audience: caller
+        status: review_required
+        owner: role.demo-fixture-maintainer
+        approval:
+          status: pending
+        notes: "Pending live dry-run: cart/checkout crawler traps"
+
+      - source_id: mts-dengi
+        tenant_id: mts-public-demo
+        url: https://dengi.mts.by/
+        kind: web_section
+        priority: P2
+        allow_path_prefixes: [/]
+        refresh_interval: P1D
+        freshness_class: service_page
+        language: ru
+        audience: caller
+        status: active
+        owner: role.demo-fixture-maintainer
+        approval:
+          status: approved
+          approved_by: role.demo-fixture-maintainer
+          approved_at: "2026-10-13T09:00:00Z"
+
+      - source_id: mts-lk-landing
+        tenant_id: mts-public-demo
+        url: https://lk.landing.mts.by/
+        kind: web_page
+        priority: P2
+        allow_path_prefixes: [/]
+        refresh_interval: P7D
+        language: ru
+        audience: caller
+        status: review_required
+        owner: role.demo-fixture-maintainer
+        approval:
+          status: pending
+        notes: "Subscription management on an lk host; personal-area risk (SSOT §6.2.3)"
+
+      - source_id: mts-help-portal
+        tenant_id: mts-public-demo
+        url: https://help.mts.by/
+        kind: web_section
+        priority: P1
+        allow_path_prefixes: [/]
+        refresh_interval: P1D
+        freshness_class: service_page
+        language: ru
+        audience: caller
+        status: review_required
+        owner: role.demo-fixture-maintainer
+        approval:
+          status: pending
+        notes: "Pending live dry-run: support widget and forms"

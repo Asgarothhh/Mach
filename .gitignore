@@ -9,6 +9,8 @@ venv/
 .mypy_cache/
 .coverage
 htmlcov/
+dist/
+build/
 
 # Local model weights and generated artifacts (see config/models.lock.yaml)
 models/
