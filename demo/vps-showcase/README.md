@@ -30,6 +30,10 @@ Caddy (на VPS): `mach.194-146-38-78.sslip.io` → `root /srv/mach-demo`,
 - https://mach.194-146-38-78.sslip.io/ — ML stage 0: сэмплы Silero v5, метрики.
 - https://mach.194-146-38-78.sslip.io/tts-ab.html — A/B всех кандидатов на
   замену Silero (лицензии, first-chunk, RTF, WER, MOS) для прослушивания командой.
+- **https://tts.194-146-38-78.sslip.io/** — живой TTS-полигон: ввод фразы и
+  выбор голоса. Синтез выполняется на демо-машине (systemd user unit
+  `tts-playground`, слушает `100.64.0.4:8077`); VPS только проксирует:
+  `tts.194-146-38-78.sslip.io → reverse_proxy 100.64.0.4:8077` (см. Caddyfile).
 
 ## Notes
 
