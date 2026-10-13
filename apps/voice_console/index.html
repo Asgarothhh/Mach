@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Голосовой агент — тестовый канал (Этап 1)</title>
+<style>
+  :root {
+    --bg: #0f1216; --panel: #171c22; --panel-2: #1f262e; --line: #2a333d;
+    --text: #e8edf2; --muted: #93a1b0; --accent: #ff4d4d; --ok: #3ddc84;
+    --warn: #ffb020; --user: #5aa9ff; --bot: #3ddc84;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { padding: 14px 20px; border-bottom: 1px solid var(--line);
+           display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  h1 { font-size: 17px; margin: 0; font-weight: 600; }
+  .banner { font-size: 13px; color: var(--muted); padding: 8px 20px;
+            border-bottom: 1px solid var(--line); background: #12171d; }
+  .banner b { color: var(--warn); font-weight: 600; }
+  main { display: grid; grid-template-columns: minmax(340px, 1fr) minmax(340px, 1fr);
+         gap: 16px; padding: 16px 20px 40px; max-width: 1280px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+           padding: 14px 16px; }
+  .panel h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em;
+              color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  button { background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+           border-radius: 9px; padding: 9px 14px; font-size: 14px; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: #3d4a57; }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: #1d4ed8; border-color: #1d4ed8; }
+  button.danger { background: #7f1d1d; border-color: #7f1d1d; }
+  button.mic { min-width: 210px; user-select: none; -webkit-user-select: none; touch-action: none; }
+  button.mic.live { background: #7f1d1d; border-color: var(--accent);
+                    box-shadow: 0 0 0 3px rgba(255,77,77,.25); }
+  .pill { font-size: 12px; padding: 3px 10px; border-radius: 20px; border: 1px solid var(--line);
+          color: var(--muted); }
+  .pill.on { color: #0b0f13; background: var(--ok); border-color: var(--ok); font-weight: 600; }
+  .pill.busy { color: #0b0f13; background: var(--warn); border-color: var(--warn); font-weight: 600; }
+  input[type=text] { flex: 1; min-width: 160px; background: #0d1116; color: var(--text);
+                     border: 1px solid var(--line); border-radius: 9px; padding: 9px 12px; }
+  label.check { color: var(--muted); font-size: 13px; display: flex; gap: 6px; align-items: center; }
+  .hint { color: var(--muted); font-size: 12.5px; margin-top: 8px; }
+  .metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .metric { background: var(--panel-2); border-radius: 9px; padding: 8px 10px; }
+  .metric .k { font-size: 11.5px; color: var(--muted); }
+  .metric .v { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  #transcript { min-height: 260px; max-height: 420px; overflow-y: auto; display: flex;
+                flex-direction: column; gap: 8px; }
+  .turn { border-radius: 10px; padding: 8px 11px; max-width: 92%; white-space: pre-wrap; }
+  .turn.user { background: #14233a; border-left: 3px solid var(--user); align-self: flex-start; }
+  .turn.bot { background: #12291d; border-left: 3px solid var(--bot); align-self: flex-end; }
+  .turn .who { font-size: 11.5px; color: var(--muted); margin-bottom: 2px; }
+  .turn.interrupted { outline: 2px dashed var(--accent); }
+  .turn .mark { color: var(--accent); font-size: 12px; }
+  .turn .fallback { color: var(--warn); font-size: 12px; }
+  #log { font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+         max-height: 260px; overflow-y: auto; background: #0d1116; border-radius: 9px;
+         padding: 8px 10px; color: #b9c6d4; }
+  #log .t { color: #5c6b7a; }
+  #log .ev { color: #8fd3ff; }
+  #log .warn { color: var(--warn); }
+  #log .err { color: var(--accent); }
+  .statusline { font-size: 13px; color: var(--muted); margin-top: 8px; min-height: 18px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎙 Голосовой агент МТС — тестовый канал</h1>
+  <span id="pill-ws" class="pill">сокет: —</span>
+  <span id="pill-state" class="pill">состояние: —</span>
+  <span id="session-label" class="pill">сессия: —</span>
+</header>
+<div class="banner">
+  Демо-стенд Этапа 1: <b>синтетический канал</b>, LLM — mock, сырое аудио не записывается.
+  Голос агента — Silero (MIT, ru_bogdan), распознавание — T-one (Apache-2.0) на компьютере стенда.
+</div>
+
+<main>
+  <section class="panel">
+    <h2>Звонок</h2>
+    <div class="row">
+      <button id="btn-start" class="primary">📞 Начать звонок</button>
+      <button id="btn-stop" class="danger" disabled>Завершить</button>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button id="btn-mic" class="mic" disabled>🎤 Удерживай, чтобы говорить</button>
+      <label class="check"><input type="checkbox" id="chk-continuous"> непрерывный микрофон</label>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <input type="text" id="text-input" placeholder="или напиши текстом (проверка без микрофона)…" disabled>
+      <button id="btn-send" disabled>Отправить</button>
+    </div>
+    <div class="statusline" id="statusline"></div>
+    <div class="hint">
+      Надень наушники: иначе голос агента попадёт в микрофон и будет ложное перебивание.
+      Скажи фразу — агент ответит голосом; скажи что-то во время ответа — сработает barge-in.
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Диагностика</h2>
+    <div class="metrics">
+      <div class="metric"><div class="k">конец реплики → первое аудио</div><div class="v" id="m-ttfa">—</div></div>
+      <div class="metric"><div class="k">ASR final → первое аудио</div><div class="v" id="m-asr-ttfa">—</div></div>
+      <div class="metric"><div class="k">first_chunk_ms (сервер)</div><div class="v" id="m-first-chunk">—</div></div>
+      <div class="metric"><div class="k">чанков / перебиваний</div><div class="v" id="m-counters">0 / 0</div></div>
+    </div>
+    <div id="log" style="margin-top:10px"></div>
+  </section>
+
+  <section class="panel" style="grid-column: 1 / -1">
+    <h2>Транскрипт</h2>
+    <div id="transcript"><div class="hint">Пока пусто — начни звонок и скажи что-нибудь.</div></div>
+  </section>
+</main>
+
+<script>
+"use strict";
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const el = {
+    start: $("btn-start"), stop: $("btn-stop"), mic: $("btn-mic"),
+    continuous: $("chk-continuous"), textInput: $("text-input"), send: $("btn-send"),
+    pillWs: $("pill-ws"), pillState: $("pill-state"), sessionLabel: $("session-label"),
+    transcript: $("transcript"), log: $("log"), statusline: $("statusline"),
+    mTtfa: $("m-ttfa"), mAsrTtfa: $("m-asr-ttfa"), mFirstChunk: $("m-first-chunk"),
+    mCounters: $("m-counters"),
+  };
+
+  const TARGET_RATE = 16000;      // WS binary contract: PCM16-LE mono 16 kHz
+  const state = {
+    ws: null, sessionId: null, connected: false,
+    micCtx: null, micStream: null, micNode: null, micSource: null,
+    capturing: false,
+    playCtx: null, playCursor: 0, sources: new Set(),
+    currentGen: null, lastBotText: null, currentBotTurn: null,
+    tEndpoint: null, tAsrFinal: null,
+    chunks: 0, interruptions: 0,
+  };
+
+  // ---------- UI helpers ----------
+  const setStatus = (text) => { el.statusline.textContent = text; };
+  const setWs = (text, cls = "") => { el.pillWs.textContent = "сокет: " + text; el.pillWs.className = "pill " + cls; };
+  const setStatePill = (text, cls = "") => { el.pillState.textContent = "состояние: " + text; el.pillState.className = "pill " + cls; };
+  const log = (kind, text) => {
+    const line = document.createElement("div");
+    const ts = new Date().toLocaleTimeString("ru-RU", { hour12: false });
+    line.innerHTML = `<span class="t">${ts}</span> <span class="${kind}">${text}</span>`;
+    el.log.appendChild(line);
+    while (el.log.childElementCount > 250) el.log.removeChild(el.log.firstChild);
+    el.log.scrollTop = el.log.scrollHeight;
+  };
+  const clearHint = () => { if (el.transcript.querySelector(".hint")) el.transcript.innerHTML = ""; };
+
+  function addTurn(who, text) {
+    clearHint();
+    const div = document.createElement("div");
+    div.className = "turn " + who;
+    div.innerHTML = `<div class="who">${who === "user" ? "звонящий" : "агент"}</div><div class="body"></div>`;
+    div.querySelector(".body").textContent = text;
+    el.transcript.appendChild(div);
+    el.transcript.scrollTop = el.transcript.scrollHeight;
+    return div;
+  }
+  function appendToTurn(div, text) {
+    if (!div) return;
+    const body = div.querySelector(".body");
+    body.textContent += text;
+    el.transcript.scrollTop = el.transcript.scrollHeight;
+  }
+
+  // ---------- playback (TTS chunks) ----------
+  async function ensurePlayCtx() {
+    if (!state.playCtx) state.playCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (state.playCtx.state === "suspended") await state.playCtx.resume();
+    return state.playCtx;
+  }
+  function flushPlayback(markInterrupted) {
+    for (const src of state.sources) { try { src.stop(); } catch (e) { /* already stopped */ } }
+    state.sources.clear();
+    if (state.playCtx) state.playCursor = state.playCtx.currentTime;
+    if (markInterrupted && state.currentBotTurn) {
+      state.currentBotTurn.classList.add("interrupted");
+      const mark = document.createElement("div");
+      mark.className = "mark"; mark.textContent = "⛔ перебито звонящим";
+      state.currentBotTurn.appendChild(mark);
+    }
+  }
+  function b64ToPcm16(b64) {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new Int16Array(bytes.buffer);
+  }
+  function scheduleChunk(b64, sampleRate) {
+    const pcm = b64ToPcm16(b64);
+    if (!pcm.length) return;
+    const ctx = state.playCtx;
+    const buf = ctx.createBuffer(1, pcm.length, sampleRate || 24000);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < pcm.length; i++) data[i] = pcm[i] / 32768;
+    const src = ctx.createBufferSource();
+    src.buffer = buf; src.connect(ctx.destination);
+    const startAt = Math.max(ctx.currentTime + 0.03, state.playCursor);
+    src.start(startAt);
+    state.playCursor = startAt + buf.duration;
+    state.sources.add(src);
+    src.onended = () => state.sources.delete(src);
+  }
+
+  // ---------- microphone (16 kHz PCM16 over WS binary) ----------
+  function micFloatToPcm16(float32, inputRate) {
+    let data = float32;
+    if (inputRate !== TARGET_RATE) {
+      const ratio = inputRate / TARGET_RATE;
+      const outLen = Math.floor(data.length / ratio);
+      const out = new Float32Array(outLen);
+      for (let i = 0; i < outLen; i++) {
+        const idx = i * ratio, i0 = Math.floor(idx), frac = idx - i0;
+        const s0 = data[i0] ?? 0, s1 = data[i0 + 1] ?? s0;
+        out[i] = s0 * (1 - frac) + s1 * frac;
+      }
+      data = out;
+    }
+    const pcm = new Int16Array(data.length);
+    for (let i = 0; i < data.length; i++) {
+      const v = Math.max(-1, Math.min(1, data[i]));
+      pcm[i] = v < 0 ? v * 0x8000 : v * 0x7fff;
+    }
+    return pcm;
+  }
+  async function ensureMic() {
+    if (state.micNode) return true;
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setStatus("микрофон недоступен: нужен HTTPS и поддержка getUserMedia");
+      return false;
+    }
+    try {
+      state.micStream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
+      state.micCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: TARGET_RATE });
+      state.micSource = state.micCtx.createMediaStreamSource(state.micStream);
+      state.micNode = state.micCtx.createScriptProcessor(2048, 1, 1);
+      state.micNode.onaudioprocess = (event) => {
+        if (!state.capturing || !state.connected) return;
+        const input = event.inputBuffer.getChannelData(0);
+        const pcm = micFloatToPcm16(input, state.micCtx.sampleRate);
+        if (state.ws?.readyState === WebSocket.OPEN) state.ws.send(pcm.buffer);
+      };
+      state.micSource.connect(state.micNode);
+      state.micNode.connect(state.micCtx.destination); // required to keep the node pulling
+      log("", "микрофон: " + state.micCtx.sampleRate + " Гц → 16 кГц PCM16");
+      return true;
+    } catch (err) {
+      setStatus("не удалось включить микрофон: " + err.message + " (нужен HTTPS)");
+      return false;
+    }
+  }
+  async function setCapturing(on) {
+    if (on && !(await ensureMic())) return;
+    state.capturing = on;
+    el.mic.classList.toggle("live", on);
+  }
+
+  // ---------- event handling ----------
+  function handleMessage(raw) {
+    let msg;
+    try { msg = JSON.parse(raw); } catch (e) { log("err", "не-JSON событие от сервера"); return; }
+    const p = msg.payload || {};
+    switch (msg.type) {
+      case "VADEvent": {
+        const speech = !!p.is_speech;
+        setStatePill(speech ? "речь звонящего" : "тишина", speech ? "busy" : "");
+        if (!speech) state.tEndpoint = performance.now();
+        log("ev", `VAD ${speech ? "speech_start" : "speech_end"} @${p.timestamp_ms} мс`);
+        break;
+      }
+      case "ASREvent": {
+        if (p.text) {
+          addTurn("user", p.text);
+          log("ev", `ASR final: «${p.text}»`);
+        } else {
+          log("warn", "ASR final: пустой текст (шум/слишком короткая реплика)");
+        }
+        state.tAsrFinal = performance.now();
+        break;
+      }
+      case "TTSChunkEvent": {
+        const gen = p.generation_id || p.turn_id;
+        if (gen !== state.currentGen) {         // новый ответ агента
+          state.currentGen = gen;
+          state.lastBotText = null;
+          state.currentBotTurn = addTurn("bot", "");
+        }
+        if (p.fallback_text) {
+          appendToTurn(state.currentBotTurn, p.fallback_text);
+          const f = document.createElement("div");
+          f.className = "fallback"; f.textContent = "⚠ текстовый режим (TTS недоступен)";
+          state.currentBotTurn?.appendChild(f);
+        }
+        if (p.text && p.text !== state.lastBotText) {
+          state.lastBotText = p.text;
+          appendToTurn(state.currentBotTurn, (state.currentBotTurn.querySelector(".body").textContent ? " " : "") + p.text);
+        }
+        if (p.audio_base64) {
+          state.chunks += 1;
+          if (state.chunks === 1 || !state.ttfaLogged) { /* noop */ }
+          scheduleChunk(p.audio_base64, p.sample_rate);
+          if (!state.firstAudioAt) {
+            state.firstAudioAt = performance.now();
+            if (state.tEndpoint) {
+              const ttfa = state.firstAudioAt - state.tEndpoint;
+              el.mTtfa.textContent = ttfa.toFixed(0) + " мс";
+              log("ev", `TTFA (конец реплики → первое аудио): ${ttfa.toFixed(0)} мс`);
+            }
+            if (state.tAsrFinal) {
+              const d = state.firstAudioAt - state.tAsrFinal;
+              el.mAsrTtfa.textContent = d.toFixed(0) + " мс";
+            }
+          }
+        }
+        if (p.first_chunk_ms != null) {
+          el.mFirstChunk.textContent = p.first_chunk_ms.toFixed(0) + " мс";
+          log("ev", `TTS first_chunk_ms: ${p.first_chunk_ms.toFixed(0)} мс`);
+        }
+        if (p.is_last_chunk) {
+          setStatePill("слушаю", "");
+          state.firstAudioAt = null;   // следующий ответ измерим заново
+          log("ev", "ответ агента завершён");
+        }
+        el.mCounters.textContent = `${state.chunks} / ${state.interruptions}`;
+        break;
+      }
+      case "InterruptionEvent": {
+        state.interruptions += 1;
+        flushPlayback(true);
+        state.firstAudioAt = null;
+        setStatePill("перебивание → слушаю", "busy");
+        log("warn", ">>> BARGE-IN: перебивание, старая генерация отменена <<<");
+        el.mCounters.textContent = `${state.chunks} / ${state.interruptions}`;
+        break;
+      }
+      default:
+        log("ev", "событие: " + msg.type);
+    }
+  }
+
+  // ---------- call control ----------
+  async function startCall() {
+    el.start.disabled = true;
+    setStatus("создаю сессию…");
+    try {
+      const resp = await fetch("session", { method: "POST" });
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+      const data = await resp.json();
+      state.sessionId = data.session_id;
+      el.sessionLabel.textContent = "сессия: " + data.session_id.slice(0, 8);
+      await ensurePlayCtx();
+      const proto = location.protocol === "https:" ? "wss" : "ws";
+      const ws = new WebSocket(`${proto}://${location.host}/api/v1/ws/sessions/${data.session_id}`);
+      ws.binaryType = "arraybuffer";
+      state.ws = ws;
+      ws.onopen = () => {
+        state.connected = true;
+        setWs("открыт", "on");
+        setStatePill("подключено", "on");
+        setStatus("звонок активен — говори (PTT или непрерывный режим)");
+        el.mic.disabled = false; el.textInput.disabled = false; el.send.disabled = false;
+        el.stop.disabled = false;
+        log("ev", "WS подключён, сессия " + data.session_id);
+      };
+      ws.onmessage = (event) => { if (typeof event.data === "string") handleMessage(event.data); };
+      ws.onclose = (event) => {
+        state.connected = false;
+        setWs("закрыт", "");
+        setStatePill("—", "");
+        setStatus(event.code === 1008 ? "сервер отклонил сессию (нет биндинга tenant?)" : "соединение закрыто");
+        el.mic.disabled = true; el.textInput.disabled = true; el.send.disabled = true;
+        el.stop.disabled = true; el.start.disabled = false;
+        log("warn", `WS закрыт: код ${event.code}`);
+      };
+      ws.onerror = () => log("err", "ошибка WebSocket");
+    } catch (err) {
+      setStatus("не удалось создать сессию: " + err.message);
+      el.start.disabled = false;
+    }
+  }
+
+  function stopCall() {
+    state.capturing = false;
+    el.mic.classList.remove("live");
+    flushPlayback(false);
+    if (state.ws) { try { state.ws.close(1000); } catch (e) { /* noop */ } state.ws = null; }
+    if (state.micStream) { state.micStream.getTracks().forEach((t) => t.stop()); }
+    state.micStream = null; state.micNode = null; state.micSource = null; state.micCtx = null;
+    setStatus("звонок завершён");
+  }
+
+  function sendText() {
+    const text = el.textInput.value.trim();
+    if (!text || !state.connected) return;
+    const payload = {
+      type: "ASREvent",
+      payload: {
+        session_id: state.sessionId,
+        turn_id: crypto.randomUUID(),
+        timestamp_ms: Date.now(),
+        revision: 0,
+        text,
+        is_final: true,
+        language: "ru",
+      },
+    };
+    state.ws.send(JSON.stringify(payload));
+    addTurn("user", text + "  (текстом)");
+    el.textInput.value = "";
+  }
+
+  // ---------- wiring ----------
+  el.start.addEventListener("click", startCall);
+  el.stop.addEventListener("click", stopCall);
+  el.send.addEventListener("click", sendText);
+  el.textInput.addEventListener("keydown", (e) => { if (e.key === "Enter") sendText(); });
+
+  const beginTalk = (e) => { e.preventDefault(); setCapturing(true); };
+  const endTalk = (e) => { e.preventDefault(); if (!el.continuous.checked) setCapturing(false); };
+  el.mic.addEventListener("pointerdown", beginTalk);
+  el.mic.addEventListener("pointerup", endTalk);
+  el.mic.addEventListener("pointerleave", endTalk);
+  el.mic.addEventListener("pointercancel", endTalk);
+  el.continuous.addEventListener("change", () => {
+    if (el.continuous.checked) setCapturing(true); else setCapturing(false);
+  });
+
+  setWs("—"); setStatePill("—");
+  log("ev", "консоль готова: «Начать звонок» → говори");
+})();
+</script>
+</body>
+</html>

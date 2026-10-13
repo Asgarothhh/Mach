@@ -130,7 +130,15 @@ class DialogOrchestrator:
                                 content_start:end_idx if is_end_of_text else len(full_response)].replace('\\"',
                                                                                                          '"').replace(
                                 '\\n', '\n')
-                            new_text = current_text[last_yielded_len:]
+                            # Парсер видит только префикс стрима: не озвучиваем хвост,
+                            # который может оказаться началом закрывающего маркера
+                            # (иначе TTS произносит '", "citation_ids').
+                            safe_len = (
+                                len(current_text)
+                                if is_end_of_text
+                                else max(0, len(current_text) - len('", "citation_ids"'))
+                            )
+                            new_text = current_text[last_yielded_len:safe_len]
 
                             if len(new_text) >= 20 or (is_end_of_text and new_text):
                                 # Фиксируем End-to-End TTFA при первой отправке аудиочанка[cite: 17]
@@ -141,7 +149,7 @@ class DialogOrchestrator:
                                 self.session_manager.transition(session_id, SessionState.SPEAKING)
                                 async for tts_event in tts_stream.feed_text(new_text):
                                     yield tts_event
-                                last_yielded_len = len(current_text)
+                                last_yielded_len = safe_len
 
                             if is_end_of_text:
                                 in_answer_text = False
@@ -182,4 +190,5 @@ class DialogOrchestrator:
             is_last_chunk=True,
             generation_id=turn_id,
             fallback_text=text,
+            text=text,
         )

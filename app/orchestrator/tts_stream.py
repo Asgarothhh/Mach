@@ -59,7 +59,6 @@ class TTSSentenceStreamer:
             if segment:
                 async for event in self._synthesize(segment):
                     yield event
-
     async def finish(self) -> AsyncIterator[TTSChunkEvent]:
         """Flush the tail of the answer and emit the closing marker."""
         remainder = self._buffer.strip()
@@ -79,7 +78,7 @@ class TTSSentenceStreamer:
             adapter = get_tts_adapter()
         except SpeechError:
             # Text-mode degradation: the caller shows fallback_text.
-            yield self._event(pcm=b"", is_last=False, fallback_text=text)
+            yield self._event(pcm=b"", is_last=False, fallback_text=text, text=text)
             return
 
         token = CancellationToken()
@@ -98,11 +97,12 @@ class TTSSentenceStreamer:
                     is_last=False,
                     sample_rate=chunk.sample_rate,
                     first_chunk_ms=chunk.first_chunk_ms if chunk.is_first_chunk else None,
+                    text=text,
                 )
         except SpeechError as exc:
             if exc.code is ErrorCode.CANCELLED:
                 return  # barge-in cancelled this generation — send nothing
-            yield self._event(pcm=b"", is_last=False, fallback_text=text)
+            yield self._event(pcm=b"", is_last=False, fallback_text=text, text=text)
 
     def _event(
         self,
@@ -112,6 +112,7 @@ class TTSSentenceStreamer:
         sample_rate: int | None = None,
         first_chunk_ms: float | None = None,
         fallback_text: str | None = None,
+        text: str | None = None,
     ) -> TTSChunkEvent:
         self._counter += 1
         return TTSChunkEvent(
@@ -125,4 +126,5 @@ class TTSSentenceStreamer:
             sample_rate=sample_rate or DEFAULT_SAMPLE_RATE,
             first_chunk_ms=first_chunk_ms,
             fallback_text=fallback_text,
+            text=text,
         )

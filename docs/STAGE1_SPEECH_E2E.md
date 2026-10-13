@@ -166,7 +166,7 @@ print(m.recognize(audio, sample_rate=sr))"
 ### 8.3 Контракты (зафиксировано)
 
 - **Аудио в WS:** binary frames, PCM16-LE mono, 16 kHz (чанки ~100 мс; поток может содержать тишину).
-- **Аудио из WS:** JSON `TTSChunkEvent`, `audio_base64` = PCM16-LE, `sample_rate` (24 кГц Silero), `generation_id == turn_id`; завершение — `is_last_chunk=true`; при недоступном TTS — `fallback_text` вместо аудио.
+- **Аудио из WS:** JSON `TTSChunkEvent`, `audio_base64` = PCM16-LE, `sample_rate` (24 кГц Silero), `generation_id == turn_id`; завершение — `is_last_chunk=true`; при недоступном TTS — `fallback_text` вместо аудио; `text` — оригинальная (ненормализованная) фраза ответа (для UI/транскрипта, SSOT §5.7 про сохранение исходной формы).
 - **VAD-контекст:** левый padding захвата 400 мс (VAD-онсет запаздывает на «Подс-»/фрикативах: с 96 мс T-one слышал «кдите» вместо «подскажите»).
 
 ### 8.4 Найденные проблемы их кода (зафиксировать у команды)
@@ -176,6 +176,8 @@ print(m.recognize(audio, sample_rate=sr))"
 3. Alembic: `versions/` пуст → таблиц нет; смоук делает `Base.metadata.create_all`.
 4. `app/api/deps.py`: `DATABASE_URL` по умолчанию смотрит на compose-хост `postgres` — для локального прогона обязателен env-override (host-порт тестовой БД 55432).
 5. OTel: при отмене генерации контекст `start_as_current_span` детачился в чужом контексте (шум в логах) — обошли явным `aclose()`.
+6. Мок-LLM не следовал их же JSON-контракту (SSOT §6.8): отдавал простой текст, `dialog_flow` не находил `"answer_text"` и в конце произносил «Ошибка формата ответа». Теперь мок стримит валидный JSON-контракт (`answer_text`/`citation_ids`/`answer_status`) — на сайте слышен полноценный ответ.
+7. Инкрементальный парсер `dialog_flow` озвучивал «небезопасный хвост» стрима: в речь попадало `", "citation_ids` до прихода закрывающего маркера. Добавлено отсечение хвоста длиной закрывающего маркера (17 символов) до его подтверждения.
 
 ### 8.5 Доказательства (артефакты)
 
@@ -183,14 +185,34 @@ print(m.recognize(audio, sample_rate=sr))"
 - `artifacts/stage1_e2e/answer_1_*.wav` — ответ, обрезанный barge-in (0.96 с).
 - `artifacts/stage1_e2e/answer_2_*.wav` — полный голосовой ответ на перебившую фразу (1.84 с).
 - Тесты: `.venv/bin/python -m pytest -q` → **540 passed** (вся сюита, включая 4 новых).
+- Сверка с SSOT/планом и ревизия новых изменений main: `docs/ML_SPEC_AUDIT_STAGE1.md`.
 
 ## 9. RUNBOOK (как воспроизвести)
+
+### 9.1 Тестовый сайт-консоль (демо для команды)
+
+Открывается из браузера: **https://voice.194-146-38-78.sslip.io/**
+
+- страница (микрофон → WS бинарное PCM16@16k, проигрыватель TTS-чанков, текст-режим,
+  метрики TTFA/first_chunk_ms, журнал событий) живёт на демо-машине и отдаётся
+  через VPS Caddy: `voice.194-146-38-78.sslip.io` → `/api/*` на `100.64.0.4:8123`
+  (API, WS включён), остальное → `100.64.0.4:8124` (консоль);
+- на демо-машине это user-юниты `voice-api.service` и `voice-console.service`
+  (`systemctl --user status voice-api voice-console`), модели — локальные;
+- проверка всего пути без браузера:
+  `.venv/bin/python scripts/voice_console_check.py --url https://voice.194-146-38-78.sslip.io`;
+- в консоли: «Начать звонок» → удерживай «🎤» (или включи непрерывный режим) → говори;
+  заговори поверх ответа — сработает barge-in. **Наушники обязательны**, иначе эхо
+  от колонок вернётся в микрофон и вызовет ложное перебивание (SSOT §5.3).
+- «Отправить текстом» проверяет TTS-ветку без микрофона (JS-путь тот же, что у смоука).
+
+### 9.2 Каскад напрямую (терминалы)
 
 ```bash
 # 1) Тестовая БД (host-порт 55432; admin/123789, db=voice_agent)
 docker start mach-e2e-postgres
 
-# 2) API с нашим каскадом (терминал 1)
+# 2) API с нашим каскадом (обычно уже запущен юнитом voice-api)
 cd /home/eq/techlb/Mach
 ENVIRONMENT=demo \
 DATABASE_URL=postgresql+asyncpg://admin:123789@127.0.0.1:55432/voice_agent \

@@ -37,6 +37,7 @@ class TTSChunkEvent(BaseEvent):
     sample_rate: Optional[int] = None
     first_chunk_ms: Optional[float] = None
     fallback_text: Optional[str] = None
+    text: Optional[str] = None
 
 class InterruptionEvent(BaseModel):
     """Событие barge-in от пользователя (перебивание)[cite: 3, 4]."""

@@ -22,12 +22,23 @@ class OpenRouterAdapter:
     ) -> AsyncGenerator[str, None]:
 
         if self.is_mock:
-            mock_text = "Это тестовый ответ от mock-провайдера. Система работает штатно."
-            for word in mock_text.split():
+            # Mock streams the same machine contract as the real LLM (SSOT §6.8):
+            # the orchestrator extracts answer_text / citation_ids / answer_status
+            # from the streamed JSON and speaks only answer_text. The key order
+            # and separators must match dialog_flow's incremental parser.
+            mock_response = json.dumps(
+                {
+                    "answer_text": "Это тестовый ответ от mock-провайдера. Система работает штатно.",
+                    "citation_ids": [],
+                    "answer_status": "grounded",
+                },
+                ensure_ascii=False,
+            )
+            for start in range(0, len(mock_response), 24):
                 if turn_context.is_cancelled:
                     break  # Прерывание при barge-in[cite: 16, 17]
-                yield word + " "
-                await asyncio.sleep(0.1)  # Имитация TTFT и задержки сети
+                yield mock_response[start:start + 24]
+                await asyncio.sleep(0.05)  # Имитация TTFT и задержки сети
             return
 
         if model_id not in self.allowed_models:
