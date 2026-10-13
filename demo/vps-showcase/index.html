@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MTS Inbound Voice Agent — ML stage 0</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --border: #2a2f3a;
+    --text: #e8eaf0; --muted: #9aa3b2; --accent: #ff4d4d; --accent2: #4da3ff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 40px 20px 80px; }
+  h1 { font-size: 26px; margin: 0 0 6px; }
+  h2 { font-size: 18px; margin: 36px 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+  .sub { color: var(--muted); margin: 0 0 4px; }
+  .muted { color: var(--muted); font-size: 14px; }
+  code { background: #1e222b; padding: 1px 6px; border-radius: 5px; font-size: 13px; color: #ffd479; }
+  .badge { display: inline-block; font-size: 12px; font-weight: 600; letter-spacing: .04em;
+           text-transform: uppercase; color: #fff; background: var(--accent);
+           border-radius: 999px; padding: 3px 10px; margin-bottom: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+          padding: 16px 18px; margin: 10px 0; }
+  .sample { display: flex; align-items: center; gap: 14px; }
+  .sample audio { width: 100%; max-width: 420px; }
+  .sample .label { min-width: 190px; font-size: 14px; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; }
+  td.num { font-variant-numeric: tabular-nums; }
+  ul { padding-left: 20px; }
+  li { margin: 4px 0; }
+  a { color: var(--accent2); }
+  footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="badge">ML · этап 0 · ветка audio</span>
+  <h1>MTS Inbound Voice Agent — трек 1</h1>
+  <p class="sub">Результат ML-контура: контракты VAD/ASR/TTS и локальные речевые адаптеры.</p>
+  <p class="sub" style="margin-top:10px">
+    🎧 <a href="tts-ab.html"><b>A/B-сравнение TTS-движков (коммерчески чистая замена Silero) →</b></a>
+    — MIT / OpenRAIL / Apache кандидаты с метриками и прослушиванием
+  </p>
+  <p class="sub">
+    🎙️ <a href="https://tts.194-146-38-78.sslip.io/"><b>Живой TTS-полигон: ввод фразы + выбор голоса →</b></a>
+    — синтез на GPU-машине, 4 движка, MIT-шортлист голосов (Екатерина, Saida, Bogdan)
+  </p>
+  <p class="sub">
+    🎧 <a href="asr-bench.html"><b>ASR-бенчмарк: распознавание русской речи →</b></a>
+    — T-one / GigaAM v3 / Vosk / Whisper на 234 фразах: реальные звонки, чистая речь, шум, доменные числа
+  </p>
+  <p class="muted">Демо-стенд команды · синтетические данные · не является production (SSOT §1.2) · 2026-10-13</p>
+
+  <h2>Сэмплы TTS — Silero v5.5 RU, 48 кГц</h2>
+  <div class="card">
+    <div class="sample" style="margin-bottom:12px">
+      <audio controls preload="metadata" src="audio/segment_0.wav"></audio>
+      <span class="label">0 — приветствие</span>
+    </div>
+    <div class="sample" style="margin-bottom:12px">
+      <audio controls preload="metadata" src="audio/segment_1.wav"></audio>
+      <span class="label">1 — вопрос с интонацией <code>*Вы*</code></span>
+    </div>
+    <div class="sample" style="margin-bottom:12px">
+      <audio controls preload="metadata" src="audio/segment_2.wav"></audio>
+      <span class="label">2 — цена, числа</span>
+    </div>
+    <div class="sample">
+      <audio controls preload="metadata" src="audio/segment_3.wav"></audio>
+      <span class="label">3 — вопрос-предложение</span>
+    </div>
+  </div>
+  <p class="muted">Синтез локальный (CPU-only). Сегмент 1 — проверка фичи из публикации:
+    постановка вопросов и интонационный центр <code>*слово*</code> (habr.com/ru/articles/1015942).</p>
+
+  <h2>Метрики TTS (smoke, прогретая модель)</h2>
+  <table>
+    <tr><th>Показатель</th><th>8 кГц (телефония)</th><th>48 кГц (WebRTC)</th></tr>
+    <tr><td>Первый аудиочанк (1-й сегмент)</td><td class="num">158 мс</td><td class="num">174 мс</td></tr>
+    <tr><td>Синтез 4 сегментов / 11.1 с аудио</td><td class="num">453 мс</td><td class="num">484 мс</td></tr>
+    <tr><td>RTF (время синтеза / длительность аудио)</td><td class="num">0.041</td><td class="num">0.043</td></tr>
+  </table>
+  <p class="muted">Железо: CPU-only, torch 2.14.1+cpu, 12 потоков (RTX 3060 в стенде пока не задействован).
+    Целевой ориентир SSOT §5.8 — 50–150 мс на прогретой модели; цифры честно показываются как есть.
+    Транспортные чанки ≤ 120 мс — для быстрой отмены при barge-in.</p>
+
+  <h2>Что уже в ветке <code>audio</code></h2>
+  <div class="card">
+    <ul>
+      <li><b>Контракты</b>: <code>AudioFrame</code>, <code>VADEvent</code>, <code>ASREvent</code>,
+          <code>TTSRequest</code>/<code>TTSChunk</code>, <code>CancellationToken</code>,
+          типизированные ошибки — ровно по SSOT §5.4/§5.7.</li>
+      <li><b>Streaming VAD</b>: Silero VAD (MIT) + собственный endpointing-автомат
+          (<code>min_speech</code>, <code>min_silence</code>, <code>prefix_padding</code>,
+          <code>max_utterance</code>, гистерезис) — пороги конфигурируемы, стартовые значения SSOT §5.3.</li>
+      <li><b>Streaming TTS</b>: Silero v5.5 RU с интонацией вопросов, ударениями и омографами;
+          чанки с <code>generation_id</code> (отмена устаревших), <code>first_chunk_ms</code> для latency-бюджета.</li>
+      <li><b>Защита транскрипта</b>: поздний partial не перезаписывает final, дубликаты не создают ходы.</li>
+      <li><b>Mock ASR</b>: детерминированный interim→final для E2E этапов 0–1.</li>
+      <li><b>Тесты</b>: 36 unit (без весов) + 1 integration на реальной модели; ruff зелёный.</li>
+    </ul>
+  </div>
+
+  <h2>Лицензии — важное</h2>
+  <div class="card">
+    <p>Голос <code>v5_5_ru</code> — <b>CC BY-NC-SA 4.0 (некоммерческая)</b>: демо и внутренняя оценка.
+      Для production — отдельная лицензия Silero либо MIT-модель <code>v5_cis_base_nostress</code>
+      (voice-модели лицензируются отдельно). Полный разбор — <code>LICENSES.md</code>,
+      версии и SHA-256 — <code>config/models.lock.yaml</code>.</p>
+  </div>
+
+  <h2>Дальше по плану ML</h2>
+  <div class="card">
+    <ul>
+      <li>Streaming ASR: <code>sherpa-onnx</code> (T-One CTC RU / Zipformer RU) + baseline <code>faster-whisper</code> large-v3-turbo; WER/latency на своём наборе.</li>
+      <li>Набор речевых тестов (≥200 фраз, синтетика/обезличенное) и метрики по числам, суммам, датам.</li>
+      <li>Калибровка порогов VAD на шум/паузы/перебивания; замер ложных срабатываний.</li>
+      <li>E2E barge-in (VAD → cancel → flush TTS) вместе с Backend + ML-Flow.</li>
+    </ul>
+  </div>
+
+  <footer>
+    Внутренний демо-стенд для команды MTS Inbound Voice Agent (трек 1). Персональные данные не публикуются.
+    Голос синтезирован моделью, не является записью человека. Нормативные документы — в репозитории:
+    <code>docs/SPEC_MTS_VOICE_AGENT_TRACK1.md</code>, <code>docs/DEV_PLAN_TRACK1.md</code>.
+  </footer>
+</div>
+</body>
+</html>

@@ -1,0 +1,268 @@
+# Model / voice checkpoint lock for the speech cascade (ML).
+#
+# Normative rule (SSOT §4.2): before a checkpoint or voice is enabled, record
+# its source URL, version/commit, SHA-256, code license, weights license,
+# usage restrictions and the review date. Never edit `sha256` by hand: run
+#
+#     python scripts/fetch_models.py <id> --output-dir <dir>
+#
+# and paste the printed value.
+version: 1
+reviewed_at: "2026-10-13"
+reviewer: "ML"
+entries:
+  - id: silero-vad
+    kind: vad
+    title: "Silero VAD v6"
+    source_url: https://github.com/snakers4/silero-vad
+    pin: "TODO: pin pip version at first install (silero-vad==x.y.z)"
+    sha256: null
+    license:
+      code: MIT
+      weights: MIT
+    commercial_use: allowed
+    status: approved-dev
+    notes: >
+      Per-frame speech-probability model; endpointing logic and thresholds are
+      ours (speech/vad/silero_vad.py), starting values per SSOT §5.3.
+  - id: silero-tts-v5_5_ru
+    kind: tts
+    title: "Silero TTS v5.5 RU (voices: aidar, baya, kseniya, xenia, eugene)"
+    source_url: https://models.silero.ai/models/tts/ru/v5_5_ru.pt
+    model_id: v5_5_ru
+    sample_rates: [8000, 24000, 48000]
+    pin: "v5_5_ru.pt (sha256 pinned after first fetch)"
+    sha256: "50081637b602126ee06cb3bc8a744d25651d2da149ee8864b9a379bfdd934437"
+    license:
+      code: "CC BY-NC-SA 4.0 (silero-models repo)"
+      weights: "CC BY-NC-SA 4.0"
+    commercial_use: not-allowed-without-separate-license
+    status: demo-only
+    notes: >
+      Supports question intonation ("*intonation center*", habr.com/ru/articles/1015942),
+      automatic stress and homographs; 8 kHz output fits telephony directly.
+      NON-COMMERCIAL license: demo stand and internal evaluation only until a
+      commercial license or an approved alternative is recorded (see LICENSES.md).
+  - id: silero-tts-v5_cis_base_nostress
+    kind: tts
+    title: "Silero TTS v5 CIS base (nostress) — ru_* speakers"
+    source_url: https://models.silero.ai/models/tts/ru/v5_cis_base_nostress.pt
+    sample_rates: [8000, 24000, 48000]
+    sha256: "0405777e332906f0644e08a680f7cfdc2137ea864090079c1fdd30a43c1b8761"
+    license:
+      code: "MIT (LICENSE_CIS)"
+      weights: MIT
+    commercial_use: allowed
+    status: benchmark
+    notes: >
+      MIT-licensed fallback for production: ru_* speakers need explicit stress
+      markup — combine with `silero-stress` (see below). No question
+      intonation. Benchmark vs other commercial-safe engines: scripts/tts_ab_eval.py.
+  - id: silero-stress
+    kind: text-preprocessor
+    title: "Silero Stress — automated stress + homograph disambiguation (RU)"
+    source_url: https://github.com/snakers4/silero-stress
+    pin: "TODO: pin pip version after first install"
+    sha256: null
+    license:
+      code: MIT
+      weights: MIT
+    commercial_use: allowed
+    status: approved-dev
+    notes: >
+      Adds stress marks ("+" before the stressed vowel); ~4M word forms,
+      ~0.5 ms/word on one CPU thread, ~50 MB. Required by MIT v5_cis_base*
+      models for Russian.
+  - id: chatterbox-multilingual-v3
+    kind: tts
+    title: "Chatterbox Multilingual V3 (Resemble AI), built-in default voice"
+    source_url: https://huggingface.co/ResembleAI/chatterbox
+    pin: "t3_model=v3 (pin HF revision after benchmark)"
+    sha256: null
+    license:
+      code: MIT
+      weights: MIT
+    commercial_use: allowed
+    status: benchmark
+    notes: >
+      Russian among 23 languages; 24 kHz; AR 0.5B — GPU strongly recommended.
+      Built-in default voice needs no reference clip; every output carries the
+      PerTh watermark. Integrated in speech/tts/chatterbox_tts.py.
+  - id: kokoro-ru-v2
+    kind: tts
+    title: "Kokoro-82M Russian port (zaakirio/kokoro-ru): sveta / masha / dima"
+    source_url: https://huggingface.co/zaakirio/kokoro-ru
+    pin: "kokoro-ru-v2-base.pth / kokoro-ru-v2-dima.pth (sha256 pending fetch)"
+    sha256: null
+    license:
+      code: "Apache-2.0 (release code), MIT (ru_g2p + RUAccent)"
+      weights: "OpenRAIL"
+    commercial_use: "conditional (OpenRAIL use restrictions)"
+    status: benchmark
+    notes: >
+      82M params, published RTF ~0.10 on laptop CPU; three voices from
+      consented studio actors (Dialogs corpus); automatic stress via RUAccent;
+      ONNX export exists for on-device deployment. Integrated in
+      speech/tts/kokoro_tts.py.
+  - id: ruaccent
+    kind: text-preprocessor
+    title: "RUAccent — stress/homographs for Russian (dependency of kokoro-ru G2P)"
+    source_url: https://github.com/Den4ikAI/ruaccent
+    license:
+      code: "MIT (repo) / Apache-2.0 (PyPI classifier)"
+      weights: "MIT/Apache-2.0"
+    commercial_use: allowed
+    status: approved-dev
+    notes: "Used only by the Kokoro-ru Russian G2P pipeline (Apache-2.0 phonemizer note: see LICENSES.md)."
+  - id: utmosv2
+    kind: eval-tool
+    title: "UTMOSv2 (SaruLab) — naturalness MOS predictor for the A/B benchmark"
+    source_url: https://github.com/sarulab-speech/UTMOSv2
+    pin: "git commit cc2700db57bb83ee13dc31ebe1b868c254e15d09 (v1.3.1.dev0)"
+    sha256: null
+    license:
+      code: MIT
+      weights: MIT
+    commercial_use: allowed
+    status: approved-eval
+    notes: "Evaluation-only tool (not part of the call path); MOS values are a proxy, final voice choice is made by listening."
+  - id: qwen3-tts-12hz-0.6b
+    kind: tts-candidate
+    title: "Qwen3-TTS 12Hz 0.6B (CustomVoice / Base)"
+    source_url: https://huggingface.co/Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice
+    license:
+      code: Apache-2.0
+      weights: Apache-2.0
+    commercial_use: allowed
+    status: candidate-not-integrated
+    notes: >
+      Russian among 10 languages, streaming latency ~97 ms claimed. Built-in
+      speakers are Chinese/EN/JA/KO natives — a Russian production voice would
+      require cloning from a licensed reference. Not integrated in round 1;
+      revisit if a Russian voice-design pass is needed.
+  - id: moss-tts-nano-100m
+    kind: tts-candidate
+    title: "MOSS-TTS-Nano 100M (OpenMOSS)"
+    source_url: https://huggingface.co/OpenMOSS-Team/MOSS-TTS-Nano-100M
+    license:
+      code: Apache-2.0
+      weights: Apache-2.0
+    commercial_use: "allowed (repo README contains a redistribution caveat — verify LICENSE file before production)"
+    status: candidate-not-integrated
+    notes: >
+      0.1B, CPU-friendly streaming TTS, 20 languages incl. Russian; voice-clone
+      workflow requires a reference clip; install pulls WeTextProcessing
+      (pynini) — heavier setup. Not integrated in round 1.
+  - id: faster-whisper-large-v3-turbo
+    kind: asr-baseline
+    title: "faster-whisper / Whisper large-v3-turbo"
+    source_url: https://github.com/SYSTRAN/faster-whisper
+    weights_url: https://huggingface.co/Systran/faster-whisper-large-v3-turbo
+    sha256: null
+    license:
+      code: MIT
+      weights: MIT
+    commercial_use: allowed
+    status: benchmark
+    notes: >
+      Quality baseline transcriber (offline). WER/latency benchmark vs T-one /
+      GigaAM / Vosk runs on our own test set (SSOT §5.4).
+  - id: t-one
+    kind: asr-streaming
+    title: "T-one (T-Tech, 71M) — streaming ASR for Russian telephony"
+    source_url: https://huggingface.co/t-tech/T-one
+    runtime: "onnx-asr (t-tech/t-one)"
+    sha256: null
+    license:
+      code: Apache-2.0
+      weights: Apache-2.0
+    commercial_use: allowed
+    status: benchmark
+    notes: >
+      300 ms streaming chunks, phrase splitter + KenLM CTC decoder; published
+      benchmarks beat GigaAM/Vosk/Whisper on telephony WER. Primary candidate
+      for the call pipeline (speech/asr/onnx_asr_adapter.py).
+  - id: gigaam-v3
+    kind: asr
+    title: "GigaAM v3 CTC/RNNT (Sber, 242M)"
+    source_url: https://huggingface.co/ai-sage/GigaAM-v3
+    runtime: "onnx-asr (gigaam-v3-ctc / gigaam-v3-rnnt)"
+    sha256: null
+    license:
+      code: MIT
+      weights: MIT
+    commercial_use: allowed
+    status: benchmark
+    notes: "Best overall Russian WER (CommonVoice); non-streaming; offline comparison point."
+  - id: vosk-model-small-ru
+    kind: asr-streaming
+    title: "Vosk small ru (20M)"
+    source_url: https://alphacephei.com/vosk/models
+    runtime: "onnx-asr (alphacep/vosk-model-small-ru)"
+    sha256: null
+    license:
+      code: Apache-2.0
+      weights: Apache-2.0
+    commercial_use: allowed
+    status: benchmark
+    notes: "Lightweight streaming baseline; lower quality, useful for CPU-floor latency."
+  - id: onnx-asr
+    kind: eval-tool
+    title: "onnx-asr (Ilya Stupakov) — onnxruntime-only ASR runtime"
+    source_url: https://github.com/istupakov/onnx-asr
+    pin: "onnx-asr==0.12.0"
+    sha256: null
+    license:
+      code: MIT
+      weights: "n/a (runtime)"
+    commercial_use: allowed
+    status: approved-eval
+    notes: "Runs T-one / GigaAM / Vosk / Whisper-ONNX without PyTorch; used for the ASR benchmark."
+  - id: openstt-calls-mirror
+    kind: dataset
+    title: "OpenSTT telephone calls (Malecc/asr_calls_2_val mirror)"
+    source_url: https://huggingface.co/datasets/Malecc/asr_calls_2_val
+    license:
+      code: "NOT STATED in the dataset card (upstream OpenSTT/community data)"
+      weights: "n/a"
+    commercial_use: "unclear"
+    status: internal-evaluation-only
+    notes: >
+      Real Russian telephone recordings used only for internal WER evaluation.
+      Never redistribute and never commit the audio to the repository
+      (artifacts/ is gitignored). Revisit the license question before any
+      external use.
+  - id: fleurs-ru
+    kind: dataset
+    title: "FLEURS ru (Google Few-shot Learning Evaluation of Universal Representations)"
+    source_url: https://huggingface.co/datasets/google/fleurs
+    license:
+      code: "CC-BY-4.0"
+      weights: "n/a"
+    commercial_use: allowed
+    status: approved-eval
+    notes: "Clean read speech + locally generated pink-noise version for the benchmark."
+  - id: sherpa-onnx-streaming-ru
+    kind: asr-streaming
+    title: "sherpa-onnx streaming Russian models (T-One CTC RU / Zipformer RU candidates)"
+    source_url: https://github.com/k2-fsa/sherpa-onnx
+    pin: "TODO: pin release tag + archive sha256 at model selection"
+    sha256: null
+    license:
+      code: Apache-2.0
+      weights: "per-model (review at selection)"
+    commercial_use: review
+    status: candidate
+    notes: "Streaming interim hypotheses are the product requirement; per-model license review pending."
+  - id: piper-tts
+    kind: tts-alternative
+    title: "Piper TTS + Russian voice"
+    source_url: https://github.com/OHF-Voice/piper1-gpl
+    pin: "TODO"
+    sha256: null
+    license:
+      code: GPL-3.0
+      weights: "per-voice (review at selection)"
+    commercial_use: review
+    status: candidate
+    notes: "Baseline candidate named by SSOT §4.2; every voice model has its own license."

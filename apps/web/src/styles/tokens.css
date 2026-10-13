@@ -1,0 +1,46 @@
+:root {
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  color: #303137;
+  background: #ffffff;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  --color-brand: #ed0010;
+  --color-brand-hover: #ce0010;
+  --color-brand-pale: #fff0f1;
+  --color-text: #303137;
+  --color-text-secondary: #737b89;
+  --color-text-soft: #9299a4;
+  --color-line: #e1e6f0;
+  --color-line-strong: #d5dce7;
+  --color-white: #ffffff;
+  --color-stage: #f1f2f6;
+  --color-stage-strong: #e9ebf1;
+  --color-green: #078456;
+  --color-green-pale: #eaf7f0;
+  --color-amber: #a96e0c;
+  --color-amber-pale: #fff4dc;
+  --color-red-pale: #fff0f1;
+  --color-blue-pale: #edf4ff;
+  --shadow-card: 0 6px 18px rgba(36, 42, 56, .025);
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 22px;
+  --radius-xl: 32px;
+  --content-width: 1376px;
+}
+
+* { box-sizing: border-box; }
+html { min-width: 320px; scroll-behavior: smooth; }
+body { margin: 0; min-width: 320px; min-height: 100vh; background: #fff; }
+button, input, textarea, select { font: inherit; }
+button, a { -webkit-tap-highlight-color: transparent; }
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: .58; }
+a { color: inherit; text-decoration: none; }
+img, svg { display: block; }
+p, h1, h2, h3 { margin-top: 0; }
+::selection { background: #ffe0e2; }
+:focus-visible { outline: 3px solid rgba(237, 0, 16, .35); outline-offset: 3px; }

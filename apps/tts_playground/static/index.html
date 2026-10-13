@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TTS-полигон — MTS Voice Agent ML</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --border: #2a2f3a;
+    --text: #e8eaf0; --muted: #9aa3b2; --accent: #4da3ff; --warn: #ffb020; --err: #ff5c5c;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 36px 18px 90px; }
+  h1 { font-size: 24px; margin: 0 0 6px; }
+  .sub { color: var(--muted); margin: 0 0 4px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .badge { display: inline-block; font-size: 12px; font-weight: 600; letter-spacing: .04em;
+           text-transform: uppercase; color: #fff; background: var(--accent);
+           border-radius: 999px; padding: 3px 10px; margin-bottom: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+          padding: 16px 18px; margin: 12px 0; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; }
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  select, textarea { width: 100%; background: #0c0e12; color: var(--text);
+          border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font: inherit; }
+  select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+  textarea { min-height: 90px; resize: vertical; }
+  .grow { flex: 1 1 320px; }
+  .license { margin-top: 10px; font-size: 13px; }
+  .license b { color: var(--warn); font-weight: 600; }
+  .license b.ok { color: #7ddc7d; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; }
+  .chip { background: #1e222b; border: 1px solid var(--border); color: var(--muted);
+          border-radius: 999px; padding: 5px 12px; font-size: 13px; cursor: pointer; }
+  .chip:hover { color: var(--text); border-color: var(--accent); }
+  .actions { display: flex; align-items: center; gap: 14px; margin-top: 14px; }
+  button { background: var(--accent); color: #07121f; border: 0; border-radius: 9px;
+           padding: 11px 22px; font: inherit; font-weight: 700; cursor: pointer; }
+  button:disabled { opacity: .55; cursor: wait; }
+  .status { color: var(--muted); font-size: 14px; }
+  audio { width: 100%; margin-top: 12px; }
+  .metrics { margin-top: 10px; font-size: 14px; color: var(--muted); }
+  .metrics b { color: var(--text); font-variant-numeric: tabular-nums; }
+  .error { display: none; border: 1px solid var(--err); color: var(--err);
+           border-radius: 10px; padding: 10px 14px; margin-top: 12px; font-size: 14px; }
+  .counter { text-align: right; font-size: 12px; color: var(--muted); margin-top: 4px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="badge">ML · live-полигон</span>
+  <h1>TTS-полигон</h1>
+  <p class="sub">Введите фразу, выберите движок и голос — послушайте, как звучит агент.</p>
+  <p class="muted">Синтез выполняется на демо-машине (GPU/CPU), это не продуктовый контур.
+    Первый запрос к движку загружает модель — может занять до ~60 секунд. До 30 запросов в минуту.</p>
+
+  <div class="card">
+    <div class="row">
+      <div class="grow">
+        <label for="engine">Движок</label>
+        <select id="engine"></select>
+      </div>
+      <div class="grow">
+        <label for="voice">Голос</label>
+        <select id="voice"></select>
+      </div>
+    </div>
+    <div class="license" id="license"></div>
+    <div class="muted" id="note" style="margin-top:4px"></div>
+  </div>
+
+  <div class="card">
+    <label for="text">Фраза (до 300 символов)</label>
+    <textarea id="text" maxlength="300">Здравствуйте! Меня зовут Анна, я виртуальный ассистент компании. Чем могу помочь?</textarea>
+    <div class="counter"><span id="count"></span>/300</div>
+    <div class="chips" id="chips"></div>
+    <div class="actions">
+      <button id="go">Озвучить</button>
+      <span class="status" id="status"></span>
+    </div>
+    <div class="error" id="error"></div>
+    <audio id="player" controls style="display:none"></audio>
+    <div class="metrics" id="metrics" style="display:none"></div>
+  </div>
+
+  <p class="muted">Гомографы для проверки ударений: «Старинный замок возвышается на холме» / «Он закрыл дверь
+    на замок», «Пшеничная мука рассыпалась по столу» / «Не работа, а настоящая мука».
+    Лицензии движков — <code>LICENSES.md</code> в репозитории. Вернуться к
+    <a href="https://mach.194-146-38-78.sslip.io/">странице ML-этапа</a> или
+    <a href="https://mach.194-146-38-78.sslip.io/tts-ab.html">A/B-сравнению</a>.</p>
+
+  <div class="card">
+    <span class="badge" style="background:#2a9d5c">ASR</span>
+    <h1 style="font-size:20px; margin-top:0">Проверка распознавания</h1>
+    <p class="sub">Запишите фразу с микрофона или загрузите аудио — движок распознает её на стенде.</p>
+    <div class="row">
+      <div class="grow">
+        <label for="asr-engine">Движок</label>
+        <select id="asr-engine"></select>
+      </div>
+      <div class="grow">
+        <label>Аудио</label>
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap">
+          <button id="rec-btn" style="background:#e0453a; min-width:120px">● Запись</button>
+          <input type="file" id="asr-file" accept="audio/*">
+        </div>
+      </div>
+    </div>
+    <audio id="asr-player" controls style="display:none"></audio>
+    <div class="actions">
+      <button id="asr-go" disabled>Распознать</button>
+      <span class="status" id="asr-status"></span>
+    </div>
+    <div class="error" id="asr-error"></div>
+    <div class="metrics" id="asr-result" style="display:none"></div>
+  </div>
+</div>
+
+<script>
+const QUICK_PHRASES = [
+  "Здравствуйте! Меня зовут Анна, я виртуальный ассистент компании. Чем могу помочь?",
+  "Подскажите, пожалуйста, сколько стоит подключение?",
+  "Тариф стоит 100 рублей в месяц, подключение бесплатное.",
+  "Позвоните нам по номеру +375 17 237-98-98.",
+  "Старинный замок возвышается на холме.",
+  "Он закрыл дверь на замок и ушёл.",
+  "Пшеничная мука рассыпалась по столу.",
+  "Не работа, а настоящая мука.",
+  "Хочу узнать про домашний интернет и телевидение."
+];
+
+let ENGINES = [];
+const $ = (id) => document.getElementById(id);
+const engineSel = $("engine"), voiceSel = $("voice"), textEl = $("text");
+const statusEl = $("status"), errorEl = $("error"), player = $("player"),
+      metricsEl = $("metrics"), licenseEl = $("license"), noteEl = $("note"), goBtn = $("go");
+
+function renderEngineMeta() {
+  const eng = ENGINES.find((e) => e.key === engineSel.value);
+  if (!eng) return;
+  voiceSel.innerHTML = eng.voices.map((v) => `<option>${v}</option>`).join("");
+  const cls = eng.commercial === "yes" ? "ok" : "";
+  const warn = eng.commercial === "no" ? " · не для production" :
+               (eng.commercial === "conditional" ? " · условно" : "");
+  licenseEl.innerHTML = `Лицензия: <b class="${cls}">${eng.license}${warn}</b>`;
+  noteEl.textContent = eng.note || "";
+}
+
+function updateCount() { $("count").textContent = textEl.value.length; }
+
+function showError(message) {
+  errorEl.textContent = message;
+  errorEl.style.display = "block";
+}
+
+async function loadEngines() {
+  try {
+    ENGINES = await (await fetch("/api/engines")).json();
+  } catch (err) {
+    showError("Не удалось получить список движков: " + err);
+    return;
+  }
+  engineSel.innerHTML = ENGINES.map((e) => `<option value="${e.key}">${e.title}</option>`).join("");
+  engineSel.onchange = renderEngineMeta;
+  renderEngineMeta();
+}
+
+async function synthesize() {
+  errorEl.style.display = "none";
+  metricsEl.style.display = "none";
+  const text = textEl.value.trim();
+  if (!text) { showError("Введите фразу"); return; }
+
+  goBtn.disabled = true;
+  const t0 = performance.now();
+  const tick = setInterval(() => {
+    statusEl.textContent = `Синтез… ${((performance.now() - t0) / 1000).toFixed(1)} с`;
+  }, 200);
+
+  try {
+    const resp = await fetch("/api/synthesize", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ engine: engineSel.value, voice: voiceSel.value, text }),
+    });
+    if (!resp.ok) {
+      let detail = `HTTP ${resp.status}`;
+      try { detail = (await resp.json()).detail || detail; } catch (e) {}
+      showError(detail);
+      return;
+    }
+    const blob = await resp.blob();
+    player.src = URL.createObjectURL(blob);
+    player.style.display = "block";
+    player.play().catch(() => {});
+
+    const first = resp.headers.get("X-TTS-First-Chunk-Ms") || "—";
+    const total = resp.headers.get("X-TTS-Total-Ms") || "—";
+    const audio = resp.headers.get("X-TTS-Audio-Ms") || "—";
+    const rtf = resp.headers.get("X-TTS-Rtf") || "—";
+    metricsEl.innerHTML =
+      `Первый чанк: <b>${first} мс</b> · синтез: <b>${total} мс</b> · ` +
+      `длительность аудио: <b>${audio} мс</b> · RTF: <b>${rtf}</b>`;
+    metricsEl.style.display = "block";
+  } catch (err) {
+    showError("Сбой запроса: " + err);
+  } finally {
+    clearInterval(tick);
+    statusEl.textContent = "";
+    goBtn.disabled = false;
+  }
+}
+
+function buildChips() {
+  const container = $("chips");
+  QUICK_PHRASES.forEach((phrase) => {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    chip.textContent = phrase.length > 38 ? phrase.slice(0, 38) + "…" : phrase;
+    chip.title = phrase;
+    chip.onclick = () => { textEl.value = phrase; updateCount(); };
+    container.appendChild(chip);
+  });
+}
+
+textEl.addEventListener("input", updateCount);
+goBtn.addEventListener("click", synthesize);
+buildChips();
+updateCount();
+loadEngines();
+
+// ---------------------------------------------------------------------------
+// ASR: record / upload -> transcribe
+// ---------------------------------------------------------------------------
+
+let asrBlob = null;
+let asrRecorder = null;
+let asrChunks = [];
+
+function escapeHtml(value) {
+  return (value || "").replace(/[&<>"']/g, (c) => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+  ));
+}
+
+function asrError(message) {
+  const el = $("asr-error");
+  el.textContent = message;
+  el.style.display = "block";
+}
+
+function setAsrAudio(blob) {
+  asrBlob = blob;
+  const player = $("asr-player");
+  player.src = URL.createObjectURL(blob);
+  player.style.display = "block";
+  $("asr-go").disabled = false;
+  $("asr-result").style.display = "none";
+}
+
+async function loadAsrEngines() {
+  try {
+    const engines = await (await fetch("/api/asr-engines")).json();
+    $("asr-engine").innerHTML = engines
+      .map((e) => `<option value="${e.key}">${e.title}</option>`)
+      .join("");
+  } catch (err) {
+    asrError("Не удалось получить список ASR-движков: " + err);
+  }
+}
+
+$("asr-file").addEventListener("change", (event) => {
+  const file = event.target.files && event.target.files[0];
+  if (file) setAsrAudio(file);
+});
+
+$("rec-btn").addEventListener("click", async () => {
+  if (asrRecorder && asrRecorder.state === "recording") {
+    asrRecorder.stop();
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    asrChunks = [];
+    asrRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+    asrRecorder.ondataavailable = (event) => asrChunks.push(event.data);
+    asrRecorder.onstop = () => {
+      stream.getTracks().forEach((track) => track.stop());
+      $("rec-btn").textContent = "● Запись";
+      setAsrAudio(new Blob(asrChunks, { type: "audio/webm" }));
+    };
+    asrRecorder.start();
+    $("rec-btn").textContent = "■ Стоп";
+  } catch (err) {
+    asrError("Нет доступа к микрофону: " + err);
+  }
+});
+
+$("asr-go").addEventListener("click", async () => {
+  if (!asrBlob) return;
+  $("asr-error").style.display = "none";
+  $("asr-result").style.display = "none";
+  $("asr-go").disabled = true;
+  const form = new FormData();
+  form.append("file", asrBlob, "audio.webm");
+  form.append("engine", $("asr-engine").value);
+  const t0 = performance.now();
+  const tick = setInterval(() => {
+    $("asr-status").textContent = `Распознаю… ${((performance.now() - t0) / 1000).toFixed(1)} с`;
+  }, 200);
+  try {
+    const resp = await fetch("/api/transcribe", { method: "POST", body: form });
+    const data = await resp.json();
+    if (!resp.ok) {
+      asrError(data.detail || `HTTP ${resp.status}`);
+      return;
+    }
+    $("asr-result").innerHTML =
+      `<div style="font-size:16px; color:var(--text)">${escapeHtml(data.text) || "<i>пусто</i>"}</div>` +
+      `<div class="metrics">латентность: <b>${data.latency_ms} мс</b> · ` +
+      `аудио: <b>${data.audio_ms} мс</b> · RTF: <b>${data.rtf}</b> · движок: ${escapeHtml(data.engine)}</div>`;
+    $("asr-result").style.display = "block";
+  } catch (err) {
+    asrError("Сбой запроса: " + err);
+  } finally {
+    clearInterval(tick);
+    $("asr-status").textContent = "";
+    $("asr-go").disabled = false;
+  }
+});
+
+loadAsrEngines();
+</script>
+</body>
+</html>

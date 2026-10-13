@@ -1,5 +1,4 @@
 import asyncio
-import base64
 import json
 import time
 import uuid
@@ -29,6 +28,7 @@ from app.orchestrator.grounding import (
 )
 from app.orchestrator.openrouter_client import OpenRouterAdapter
 from app.orchestrator.state_machine import SessionManager, SessionState, TurnContext
+from app.orchestrator.tts_stream import TTSSentenceStreamer
 from app.schemas.events import TTSChunkEvent
 from app.security.guardrails import GuardrailsService
 from app.security.telemetry import (
@@ -479,10 +479,33 @@ class DialogOrchestrator:
             return
         if self.session_manager.active_sessions.get(session_id) == SessionState.INTERRUPTED:
             return
-        text = outcome.answer_text or ""
-        yield self._create_mock_tts_chunk(
-            session_id, outcome.turn_id, text, is_last=True
-        )
+        text = (outcome.answer_text or "").strip()
+        if not text:
+            return
+
+        # Mock and live TTS both go through TTSSentenceStreamer so SPEAKING,
+        # generation_id, sample_rate and barge-in cancel work the same way.
+        turn_context = context
+        if turn_context is None:
+            turn_context = TurnContext(
+                turn_id=outcome.turn_id,
+                session_id=session_id,
+                tenant_id=tenant_id or "demo-tenant-1",
+            )
+        tts_stream = TTSSentenceStreamer(session_id, outcome.turn_id, turn_context)
+        self.session_manager.transition(session_id, SessionState.SPEAKING)
+        try:
+            async for event in tts_stream.feed_text(text):
+                yield event
+            async for event in tts_stream.finish():
+                yield event
+        finally:
+            if (
+                not getattr(turn_context, "is_cancelled", False)
+                and self.session_manager.active_sessions.get(session_id)
+                not in (SessionState.INTERRUPTED, SessionState.CLOSED)
+            ):
+                self.session_manager.transition(session_id, SessionState.LISTENING)
 
     async def _retrieve_guarded(
         self,
@@ -563,19 +586,3 @@ class DialogOrchestrator:
     @staticmethod
     def _event_from_payload(payload: dict[str, object]) -> RetrievalEvent:
         return RetrievalEvent(**payload)
-
-    def _create_mock_tts_chunk(
-        self, session_id: str, turn_id: str, text: str, is_last: bool
-    ) -> TTSChunkEvent:
-        dummy_audio = base64.b64encode(text.encode("utf-8")).decode("utf-8")
-        kwargs = {
-            "session_id": session_id,
-            "turn_id": turn_id,
-            "timestamp_ms": int(time.time() * 1000),
-            "chunk_id": str(uuid.uuid4()),
-            "audio_base64": dummy_audio,
-            "is_last_chunk": is_last,
-        }
-        if "text" in getattr(TTSChunkEvent, "model_fields", {}):
-            kwargs["text"] = text
-        return TTSChunkEvent(**kwargs)

@@ -1,83 +1,114 @@
 # MTS Voice Agent — Руководство по эксплуатации (Runbook)
 
-Этот документ описывает процедуры развертывания, тестирования и обслуживания ИИ-агента для обработки входящих звонков. Инфраструктура настроена для запуска в изолированном демо-режиме.
+Нормативный SSOT: [`SPEC_MTS_VOICE_AGENT_TRACK1.md`](SPEC_MTS_VOICE_AGENT_TRACK1.md) v1.1.
+Речевой каскад (WS PCM): [`STAGE1_SPEECH_E2E.md`](STAGE1_SPEECH_E2E.md).
 
-## 1. Подготовка окружения
+Инфраструктура ниже — **демо-стенд Этапа 1**, не доказательство SIP/МТС-транка.
 
-Перед первым запуском убедитесь, что у вас установлены:
-* **Docker** и плагин **Docker Compose** (v2).
-* **Python 3.11+** (для запуска локальных проверок и тестов).
+## 1. Подготовка
 
-Создайте файл переменных окружения:
+Нужны Docker Compose v2, Python 3.12 (conda env `mach`) и Node.js 22+ для локальной сборки frontend.
+
 ```bash
 cp .env.example .env
+# Заполните POSTGRES_PASSWORD (совпадает с DATABASE_URL) и при желании OPENROUTER_API_KEY.
 ```
-Убедитесь, что в `.env` указан правильный пароль для PostgreSQL (совпадающий с `docker-compose.yml`) и валидный API-ключ для OpenRouter (если планируете тестировать реальную LLM).
 
-## 2. Запуск стенда
+Существующий volume `pg_data` применяет пароль Postgres **только при первом создании**. Смена пароля без `docker compose down -v` не сработает; `down -v` удаляет демо-данные и требует явного разрешения.
 
-Поднимите все сервисы, используя профиль `demo` (включает API, PostgreSQL, Redis, Qdrant и Prometheus):
+## 2. Запуск стенда (CPU, mock ASR/TTS)
 
 ```bash
 docker compose --profile demo up --build -d
 ```
 
-**Что происходит под капотом:**
-1. Поднимаются базы данных и кеш.
-2. Контейнер `api` дожидается готовности PostgreSQL.
-3. Автоматически накатываются миграции Alembic (создаются схемы и таблицы).
-4. Запускается FastAPI-сервер на порту `8000`.
+Сервисы: `postgres`, `redis`, `qdrant`, `prometheus`, `api`, `voice_agent`, `web`, `ingestion`.
+Qdrant поднимается, но RAG остаётся in-memory stub. `ingestion` **не** обходит mts.by.
 
-## 3. Проверка работоспособности
+Переменные речи по умолчанию: `VOICE_ASR_MODE=mock`, `VOICE_TTS_MODE=mock`. Веса моделей **не** скачиваются при `up`.
 
-Проверьте логи API, чтобы убедиться в успешном старте:
-```bash
-docker compose logs -f api
-```
-*(Ожидаемое сообщение: `Application startup complete`)*.
+Остановка без удаления данных:
 
-### Сквозное E2E тестирование
-Для проверки каскада (Session -> WebSocket -> RAG -> LLM -> TTS) запустите smoke-тест:
-```bash
-# Активируйте виртуальное окружение и установите зависимости
-pip install -r requirements.txt
-python scripts/smoke_test.py
-```
-
-### Запуск Unit-тестов
-Проверка логики машины состояний и контроля доступа (RBAC):
-```bash
-python -m pytest tests/
-```
-
-## 4. Доступ к интерфейсам
-
-* **Swagger UI (Документация API):** [http://localhost:8000/docs](http://localhost:8000/docs)
-* **Prometheus (Метрики задержек):** [http://localhost:9090](http://localhost:9090)
-
-## 5. Остановка и очистка данных
-
-Обычная остановка контейнеров (данные в БД сохраняются):
 ```bash
 docker compose --profile demo down
 ```
 
-**Полный сброс (Hard Reset):**
-Если необходимо очистить базу данных, вектора Qdrant и логи, удалите контейнеры вместе с томами (volumes):
+## 3. Проверки
+
 ```bash
-docker compose --profile demo down -v
+curl -sS http://localhost:8000/health/live
+curl -sS http://localhost:8000/health/ready   # retriever обязателен; OpenRouter нет
+curl -sS http://localhost:8100/health/live
+curl -sS http://localhost:8100/health/ready   # asr/tts = mock; livekit = not_configured
 ```
 
-## 6. Резервное копирование и восстановление БД
+Текстовый путь (оба demo-tenant):
 
-Создание дампа базы данных сессий и транскриптов:
 ```bash
-docker exec -t mach-postgres-1 pg_dump -U admin -d voice_agent -F c -f /tmp/backup.dump
-docker cp mach-postgres-1:/tmp/backup.dump ./backup.dump
+# acme-it-demo
+SID=$(curl -sS -X POST http://localhost:8000/api/v1/sessions \
+  -H 'Content-Type: application/json' \
+  -d '{"tenant_id":"acme-it-demo","channel":"text","language":"ru"}' | python -c 'import json,sys; print(json.load(sys.stdin)["session_id"])')
+curl -sS -X POST "http://localhost:8000/api/v1/sessions/$SID/turns/text" \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"график работы офис acme"}'
+
+# mts-public-demo
+SID=$(curl -sS -X POST http://localhost:8000/api/v1/sessions \
+  -H 'Content-Type: application/json' \
+  -d '{"tenant_id":"mts-public-demo","channel":"text","language":"ru"}' | python -c 'import json,sys; print(json.load(sys.stdin)["session_id"])')
+curl -sS -X POST "http://localhost:8000/api/v1/sessions/$SID/turns/text" \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"входящие звонки турции"}'
 ```
 
-Восстановление из дампа:
+Локальные тесты:
+
 ```bash
-docker cp ./backup.dump mach-postgres-1:/tmp/backup.dump
-docker exec -i mach-postgres-1 pg_restore -U admin -d voice_agent -1 /tmp/backup.dump
+conda run -n mach python -m pytest tests/ -m "not integration"
+conda run -n mach pytest -q packages/rag
+conda run -n mach pytest -q apps/ingestion
+cd apps/web && npm ci && npm run check
 ```
+
+Smoke API: `python scripts/smoke_test.py` (нужен поднятый API).
+
+## 4. UI
+
+* Frontend compose: [http://localhost:3000](http://localhost:3000) (`VITE_DEMO_MODE=false`, текстовый режим ходит в `/turns/text`).
+* Локальный Vite: `cd apps/web && cp .env.example .env &&` выставьте `VITE_DEMO_MODE=false`, `VITE_BACKEND_TEXT_TEST=true`, затем `npm run dev` → [http://localhost:5173](http://localhost:5173).
+* Swagger: [http://localhost:8000/docs](http://localhost:8000/docs)
+* Voice-agent health: [http://localhost:8100/health/ready](http://localhost:8100/health/ready)
+
+### Demo UI vs live API
+
+| Режим | Как включить | Что видно |
+|---|---|---|
+| Demo fixtures | `VITE_DEMO_MODE=true` | Баннер «Демо», синтетические звонки/знания |
+| Live API | `VITE_DEMO_MODE=false` (+ `VITE_BACKEND_TEXT_TEST=true` для compose-сборки) | Реальные `POST /sessions` и `/turns/text` |
+
+Переключатель tenant в шапке: **Acme IT (demo)** = `acme-it-demo`, **MTS public (demo)** = `mts-public-demo`. Это UI-выбор, не авторизация.
+
+Голос: баннер **«Browser test channel / mock — не телефония»**. PCM16 идёт на `WS /api/v1/ws/sessions/{id}`. LiveKit не поднят (`VITE_LIVEKIT_URL` пуст).
+
+## 5. Модели (opt-in, не при compose up)
+
+```bash
+python scripts/fetch_models.py   # явная команда, веса в models/ (gitignored)
+# затем extras: pip install -e ".[vad,asr,tts,tts-stress]"
+# VOICE_ASR_MODE=live VOICE_TTS_MODE=real
+```
+
+Default live TTS — MIT shortlist Silero `v5_cis_base_nostress` / `ru_bogdan`. Голоса Silero `v5_5_ru` (CC BY-NC-SA) **не** default demo.
+
+## 6. BLOCKED на этом стенде
+
+* Live ASR/TTS без локальных весов (используйте mock).
+* LiveKit и media token в `POST /sessions` (SSOT §9 / §15).
+* SIP / МТС-транк — нет credentials.
+* Crawler, Qdrant hybrid, embeddings, reranker.
+* `/admin/knowledge/*`, `/tenants`, `/calls`, scenarios, analytics — UI в demo/disabled.
+
+## 7. Следующий шаг
+
+Self-hosted LiveKit в Compose, короткий media token, voice-agent как LiveKit worker. Не имитировать «телефонный продукт» до SIP credentials.

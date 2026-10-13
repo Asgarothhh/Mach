@@ -20,9 +20,13 @@ LLM_MODEL = "meta-llama/llama-3-8b-instruct"
 
 
 @pytest.fixture(autouse=True)
-def _force_mock_and_limiter():
+def _force_mock_and_limiter(monkeypatch):
     from app.api import main
 
+    # Mock speech path (PCM tone TTS, energy VAD, scripted ASR). Live weights
+    # stay behind VOICE_ASR_MODE=live / VOICE_TTS_MODE=real.
+    monkeypatch.setenv("VOICE_TTS_MODE", "mock")
+    monkeypatch.setenv("VOICE_ASR_MODE", "mock")
     main.llm_adapter.is_mock = True
     main.limiter.reset()
     yield
