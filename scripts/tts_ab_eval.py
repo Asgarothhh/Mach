@@ -56,9 +56,9 @@ PHRASES: list[str] = [
     "Хочу узнать про домашний интернет и телевидение.",
 ]
 
-# Voices for the MIT-licensed Silero CIS-base model (actual ``ru_*`` speaker
-# ids; the team picks the winner by ear from the rendered page).
-SILERO_MIT_VOICES: list[str] = ["ru_albina", "ru_alexandr", "ru_dmitriy", "ru_ekaterina"]
+# Voices for the MIT-licensed Silero CIS-base model — team shortlist
+# (Ekaterina, Saida, Bogdan only; see the playground server for the rationale).
+SILERO_MIT_VOICES: list[str] = ["ru_ekaterina", "ru_saida", "ru_bogdan"]
 
 
 @dataclass

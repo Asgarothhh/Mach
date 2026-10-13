@@ -44,36 +44,13 @@ MODELS_DIR = REPO_ROOT / "models" / "tts"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 # ru_* voices of the MIT-licensed Silero v5_cis_base_nostress weights.
+# Team shortlist (2026-10-13): only Ekaterina, Saida and Bogdan are kept for
+# evaluation; the rest of the 29 ru_* voices stay available in the model file
+# but are not offered in the playground / A-B page.
 SILERO_CIS_VOICES: list[str] = [
-    "ru_alexandr",
-    "ru_albina",
     "ru_ekaterina",
-    "ru_dmitriy",
-    "ru_roman",
-    "ru_oksana",
-    "ru_vika",
-    "ru_igor",
-    "ru_marat",
-    "ru_karina",
-    "ru_zhadyra",
-    "ru_zhazira",
     "ru_saida",
-    "ru_nurgul",
-    "ru_aigul",
-    "ru_alfia",
-    "ru_alfia2",
     "ru_bogdan",
-    "ru_gamat",
-    "ru_kejilgan",
-    "ru_kermen",
-    "ru_miyau",
-    "ru_onaoy",
-    "ru_ramilia",
-    "ru_safarhuja",
-    "ru_sibday",
-    "ru_zara",
-    "ru_zinaida",
-    "ru_eduard",
 ]
 
 

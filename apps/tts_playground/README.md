@@ -10,7 +10,7 @@ Tailscale. Это инструмент тестирования ML-трека, �
 
 | Ключ | Лицензия | Голоса | Примечание |
 |---|---|---|---|
-| `silero-mit` | MIT + MIT (stress) | 29 голосов `ru_*` | рекомендованный production-кандидат |
+| `silero-mit` | MIT + MIT (stress) | `ru_ekaterina`, `ru_saida`, `ru_bogdan` (шортлист) | рекомендованный production-кандидат |
 | `silero-v5` | CC BY-NC-SA (демо) | xenia, baya, kseniya, aidar, eugene | эталон качества, интонация вопросов (`*слово*`) |
 | `kokoro-ru` | OpenRAIL (GPL-3 в G2P) | sveta, masha, dima | лучшая разборчивость, CPU |
 | `chatterbox` | MIT | встроенный голос | GPU, экспериментальный |
