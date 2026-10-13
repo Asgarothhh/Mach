@@ -43,6 +43,11 @@
   input[type=text] { flex: 1; min-width: 160px; background: #0d1116; color: var(--text);
                      border: 1px solid var(--line); border-radius: 9px; padding: 9px 12px; }
   label.check { color: var(--muted); font-size: 13px; display: flex; gap: 6px; align-items: center; }
+  select { background: #0d1116; color: var(--text); border: 1px solid var(--line);
+           border-radius: 9px; padding: 8px 10px; font-size: 13.5px; }
+  .chip { background: var(--panel-2); border: 1px solid var(--line); border-radius: 16px;
+          padding: 5px 12px; font-size: 12.5px; color: var(--muted); cursor: pointer; }
+  .chip:hover { color: var(--text); border-color: #3d4a57; }
   .hint { color: var(--muted); font-size: 12.5px; margin-top: 8px; }
   .metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
   .metric { background: var(--panel-2); border-radius: 9px; padding: 8px 10px; }
@@ -83,6 +88,14 @@
   <section class="panel">
     <h2>Звонок</h2>
     <div class="row">
+      <label class="check">база знаний:
+        <select id="tenant-select">
+          <option value="mts-public-demo">МТС (демо: роуминг, USSD)</option>
+          <option value="acme-it-demo">Acme IT (график, прайс, контакты)</option>
+        </select>
+      </label>
+    </div>
+    <div class="row" style="margin-top:10px">
       <button id="btn-start" class="primary">📞 Начать звонок</button>
       <button id="btn-stop" class="danger" disabled>Завершить</button>
     </div>
@@ -94,10 +107,12 @@
       <input type="text" id="text-input" placeholder="или напиши текстом (проверка без микрофона)…" disabled>
       <button id="btn-send" disabled>Отправить</button>
     </div>
+    <div class="row" style="margin-top:10px" id="examples"></div>
     <div class="statusline" id="statusline"></div>
     <div class="hint">
       Надень наушники: иначе голос агента попадёт в микрофон и будет ложное перебивание.
       Скажи фразу — агент ответит голосом; скажи что-то во время ответа — сработает barge-in.
+      RAG-поиск в демо-фикстурах идёт по совпадению слов: пользуйся примерами ниже.
     </div>
   </section>
 
@@ -125,10 +140,25 @@
   const el = {
     start: $("btn-start"), stop: $("btn-stop"), mic: $("btn-mic"),
     continuous: $("chk-continuous"), textInput: $("text-input"), send: $("btn-send"),
+    tenant: $("tenant-select"), examples: $("examples"),
     pillWs: $("pill-ws"), pillState: $("pill-state"), sessionLabel: $("session-label"),
     transcript: $("transcript"), log: $("log"), statusline: $("statusline"),
     mTtfa: $("m-ttfa"), mAsrTtfa: $("m-asr-ttfa"), mFirstChunk: $("m-first-chunk"),
     mCounters: $("m-counters"),
+  };
+
+  // Примеры под демо-фикстуры соответствующего tenant (поиск идёт по словам).
+  const EXAMPLES = {
+    "mts-public-demo": [
+      "входящие звонки в турции стоят",
+      "роуминг в турции исходящие",
+      "баланс команда USSD",
+    ],
+    "acme-it-demo": [
+      "график работы офис acme",
+      "лицензия acme стоит",
+      "контакты поддержки acme",
+    ],
   };
 
   const TARGET_RATE = 16000;      // WS binary contract: PCM16-LE mono 16 kHz
@@ -355,7 +385,7 @@
     el.start.disabled = true;
     setStatus("создаю сессию…");
     try {
-      const resp = await fetch("session", { method: "POST" });
+      const resp = await fetch("session?tenant=" + encodeURIComponent(el.tenant.value), { method: "POST" });
       if (!resp.ok) throw new Error("HTTP " + resp.status);
       const data = await resp.json();
       state.sessionId = data.session_id;
@@ -422,6 +452,22 @@
   }
 
   // ---------- wiring ----------
+  function renderExamples() {
+    el.examples.innerHTML = "";
+    for (const phrase of EXAMPLES[el.tenant.value] || []) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "chip";
+      chip.textContent = phrase;
+      chip.addEventListener("click", () => {
+        el.textInput.value = phrase;
+        el.textInput.focus();
+      });
+      el.examples.appendChild(chip);
+    }
+  }
+  el.tenant.addEventListener("change", renderExamples);
+
   el.start.addEventListener("click", startCall);
   el.stop.addEventListener("click", stopCall);
   el.send.addEventListener("click", sendText);
@@ -438,6 +484,7 @@
   });
 
   setWs("—"); setStatePill("—");
+  renderExamples();
   log("ev", "консоль готова: «Начать звонок» → говори");
 })();
 </script>

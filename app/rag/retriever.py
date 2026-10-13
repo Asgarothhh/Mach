@@ -1,44 +1,63 @@
-from typing import Protocol, List
-from pydantic import BaseModel
+"""Demo knowledge runtime: publishes isolated tenant indexes, no retrieve wrapper."""
 
-class RetrievalFilters(BaseModel):
-    # Фильтры для базы знаний
-    service: str | None = None
-    topic: str | None = None
+from __future__ import annotations
 
-class SourceChunk(BaseModel):
-    chunk_id: str
-    title: str
-    url: str
-    content: str
-    valid_to: str | None = None
+from dataclasses import dataclass
 
-class RetrievalResult(BaseModel):
-    chunks: List[SourceChunk]
-    index_revision: str
-    stale_conflict: bool = False
+from mts_contracts.knowledge import (
+    ACTIVE_INDEX_REVISION,
+    KnowledgeRetriever,
+    RetrievalFilters,
+)
+from mts_rag import InMemoryKnowledgeRetriever
 
-class KnowledgeRetriever(Protocol):
-    async def retrieve(
-        self, query: str, *, tenant_id: str, language: str, audience: str,
-        filters: RetrievalFilters, index_revision: str, deadline_ms: int
-    ) -> RetrievalResult: ...
+from app.rag.demo_fixtures import (
+    ACME_TENANT_ID,
+    DEMO_INDEX_REVISION,
+    MTS_TENANT_ID,
+    acme_chunks,
+    mts_chunks,
+)
 
-class MockKnowledgeRetriever:
-    """Заглушка для Этапа 1/2 до готовности реального поиска Qdrant."""
-    async def retrieve(
-        self, query: str, *, tenant_id: str, language: str, audience: str,
-        filters: RetrievalFilters, index_revision: str, deadline_ms: int
-    ) -> RetrievalResult:
-        return RetrievalResult(
-            chunks=[
-                SourceChunk(
-                    chunk_id="S1",
-                    title="Тарифы в роуминге",
-                    url="https://mts.by/roaming",
-                    content="Входящие звонки в Турции стоят 1.5 BYN за минуту. Исходящие 3 BYN."
+_PROBE_QUERY = "probe"
+_PROBE_DEADLINE_MS = 50
+
+
+@dataclass(frozen=True)
+class KnowledgeRuntime:
+    retriever: KnowledgeRetriever
+    tenants: frozenset[str]
+
+    async def probe(self) -> dict[str, str]:
+        """Resolve the active revision for each demo tenant. Errors map to unavailable."""
+        statuses: dict[str, str] = {}
+        for tenant_id in sorted(self.tenants):
+            try:
+                await self.retriever.retrieve(
+                    _PROBE_QUERY,
+                    tenant_id=tenant_id,
+                    language="ru",
+                    audience="caller",
+                    filters=RetrievalFilters(),
+                    index_revision=ACTIVE_INDEX_REVISION,
+                    deadline_ms=_PROBE_DEADLINE_MS,
                 )
-            ],
-            index_revision="v1.0",
-            stale_conflict=False
-        )
+            except Exception:  # noqa: BLE001 - probe maps any retrieve failure to unavailable
+                statuses[tenant_id] = "unavailable"
+            else:
+                statuses[tenant_id] = "ok"
+        return statuses
+
+
+def build_demo_runtime() -> KnowledgeRuntime:
+    retriever = InMemoryKnowledgeRetriever()
+    retriever.publish(
+        ACME_TENANT_ID, DEMO_INDEX_REVISION, acme_chunks(), activate=True
+    )
+    retriever.publish(
+        MTS_TENANT_ID, DEMO_INDEX_REVISION, mts_chunks(), activate=True
+    )
+    return KnowledgeRuntime(
+        retriever=retriever,
+        tenants=frozenset({ACME_TENANT_ID, MTS_TENANT_ID}),
+    )

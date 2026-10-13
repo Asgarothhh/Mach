@@ -29,12 +29,15 @@ import time
 import uuid
 
 
-async def run(url: str, text: str, timeout: float) -> int:
+async def run(url: str, text: str, timeout: float, tenant: str | None = None) -> int:
     import httpx
     import websockets
 
+    session_path = "session"
+    if tenant:
+        session_path += f"?tenant={tenant}"
     async with httpx.AsyncClient(base_url=url, timeout=20.0) as client:
-        response = await client.post("session")
+        response = await client.post(session_path)
         response.raise_for_status()
         session_id = response.json()["session_id"]
     print(f"session: {session_id}")
@@ -92,10 +95,15 @@ async def run(url: str, text: str, timeout: float) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url", default="http://100.64.0.4:8124", help="console base URL")
-    parser.add_argument("--text", default="Здравствуйте, расскажите про подключение")
+    parser.add_argument("--tenant", default="mts-public-demo", help="demo tenant (fixtures)")
+    parser.add_argument(
+        "--text",
+        default="сколько стоят входящие звонки в турции",
+        help="text turn to send",
+    )
     parser.add_argument("--timeout", type=float, default=90.0)
     args = parser.parse_args()
-    return asyncio.run(run(args.url, args.text, args.timeout))
+    return asyncio.run(run(args.url, args.text, args.timeout, args.tenant))
 
 
 if __name__ == "__main__":

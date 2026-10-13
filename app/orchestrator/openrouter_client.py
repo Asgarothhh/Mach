@@ -1,8 +1,10 @@
-import httpx
 import asyncio
 import json
-import os
-from typing import AsyncGenerator
+import re
+from collections.abc import AsyncGenerator
+
+import httpx
+
 from app.orchestrator.state_machine import TurnContext
 
 
@@ -11,8 +13,9 @@ class OpenRouterAdapter:
         self.api_key = api_key
         self.allowed_models = allowed_models
         self.base_url = "https://openrouter.ai/api/v1/chat/completions"
-        # Включаем mock-режим, если ключа нет или он тестовый, как требуется для Этапа 0
-        self.is_mock = os.getenv("ENVIRONMENT") == "demo" and (not api_key or api_key == "your_test_key_here")
+        # Mock when the key is missing or a known placeholder. ENVIRONMENT=demo is not required.
+        # Live HTTP is used only when a real key is present.
+        self.is_mock = not api_key or api_key == "your_test_key_here"
 
     async def stream_answer(
             self,
@@ -22,23 +25,37 @@ class OpenRouterAdapter:
     ) -> AsyncGenerator[str, None]:
 
         if self.is_mock:
-            # Mock streams the same machine contract as the real LLM (SSOT §6.8):
-            # the orchestrator extracts answer_text / citation_ids / answer_status
-            # from the streamed JSON and speaks only answer_text. The key order
-            # and separators must match dialog_flow's incremental parser.
-            mock_response = json.dumps(
-                {
-                    "answer_text": "Это тестовый ответ от mock-провайдера. Система работает штатно.",
-                    "citation_ids": [],
-                    "answer_status": "grounded",
-                },
-                ensure_ascii=False,
+            system = next(
+                (message.get("content", "") for message in messages if message.get("role") == "system"),
+                "",
             )
-            for start in range(0, len(mock_response), 24):
+            evidence_match = re.search(r"<EVIDENCE>(.*?)</EVIDENCE>", system, flags=re.DOTALL)
+            evidence = evidence_match.group(1) if evidence_match else ""
+            evidence_ids = re.findall(
+                r"\[([A-Za-z0-9][A-Za-z0-9._:-]*)\]", evidence
+            )
+            if evidence_ids:
+                content_match = re.search(r"content=(.*)", evidence, flags=re.DOTALL)
+                raw_content = content_match.group(1).strip() if content_match else ""
+                first_sentence = re.split(r"(?<=[.!?])\s+", raw_content, maxsplit=1)[0].strip()
+                payload = {
+                    "answer_text": first_sentence or raw_content,
+                    "citation_ids": [evidence_ids[0]],
+                    "answer_status": "grounded",
+                }
+            else:
+                payload = {
+                    "answer_text": "По этому вопросу в базе знаний нет подтверждённых данных.",
+                    "citation_ids": [],
+                    "answer_status": "no_evidence",
+                }
+            blob = json.dumps(payload, ensure_ascii=False)
+            slice_size = max(1, len(blob) // 3)
+            for offset in range(0, len(blob), slice_size):
                 if turn_context.is_cancelled:
-                    break  # Прерывание при barge-in[cite: 16, 17]
-                yield mock_response[start:start + 24]
-                await asyncio.sleep(0.05)  # Имитация TTFT и задержки сети
+                    break
+                yield blob[offset:offset + slice_size]
+                await asyncio.sleep(0)
             return
 
         if model_id not in self.allowed_models:

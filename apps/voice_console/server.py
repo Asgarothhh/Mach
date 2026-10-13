@@ -36,12 +36,17 @@ logger = logging.getLogger("voice_console")
 HERE = Path(__file__).resolve().parent
 API_BASE = os.getenv("VOICE_API_BASE", "http://127.0.0.1:8123")
 DATABASE_URL = os.getenv("DATABASE_URL", "")
-TENANT_ID = os.getenv("VOICE_TENANT_ID", "demo-tenant-1")
+TENANT_ID = os.getenv("VOICE_TENANT_ID", "mts-public-demo")
+ALLOWED_TENANTS = [
+    tenant.strip()
+    for tenant in os.getenv("VOICE_TENANTS", "mts-public-demo,acme-it-demo").split(",")
+    if tenant.strip()
+]
 
 app = FastAPI(title="Voice agent test console")
 
 
-async def _ensure_db_rows(session_id: str) -> None:
+async def _ensure_db_rows(session_id: str, tenant_id: str) -> None:
     """Create the Tenant/Session rows the orchestrator's Turn FK needs."""
     if not DATABASE_URL:
         logger.warning("DATABASE_URL is not set: Turn persistence will fail")
@@ -56,13 +61,13 @@ async def _ensure_db_rows(session_id: str) -> None:
             await conn.run_sync(Base.metadata.create_all)
         maker = async_sessionmaker(engine, expire_on_commit=False)
         async with maker() as db:
-            if await db.get(Tenant, TENANT_ID) is None:
-                db.add(Tenant(tenant_id=TENANT_ID, display_name="Demo tenant (console)"))
+            if await db.get(Tenant, tenant_id) is None:
+                db.add(Tenant(tenant_id=tenant_id, display_name=f"{tenant_id} (console)"))
             if await db.get(Session, session_id) is None:
                 db.add(
                     Session(
                         session_id=session_id,
-                        tenant_id=TENANT_ID,
+                        tenant_id=tenant_id,
                         channel="voice-console",
                     )
                 )
@@ -77,18 +82,19 @@ async def index() -> FileResponse:
 
 
 @app.get("/healthz")
-async def healthz() -> dict[str, str]:
-    return {"status": "ok"}
+async def healthz() -> dict[str, object]:
+    return {"status": "ok", "tenants": ALLOWED_TENANTS, "default_tenant": TENANT_ID}
 
 
 @app.post("/session")
-async def create_session() -> dict[str, str]:
+async def create_session(tenant: str | None = None) -> dict[str, str]:
     """Create a call session on the API and persist its Tenant/Session rows."""
+    tenant_id = tenant if tenant in ALLOWED_TENANTS else TENANT_ID
     try:
         async with httpx.AsyncClient(base_url=API_BASE, timeout=15.0) as client:
             response = await client.post(
                 "/api/v1/sessions",
-                json={"tenant_id": TENANT_ID, "channel": "voice-console"},
+                json={"tenant_id": tenant_id, "channel": "voice-console"},
             )
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"api_unreachable: {exc}") from exc
@@ -96,10 +102,10 @@ async def create_session() -> dict[str, str]:
         raise HTTPException(status_code=502, detail=f"api_error_{response.status_code}")
     session_id = response.json()["session_id"]
     try:
-        await _ensure_db_rows(session_id)
+        await _ensure_db_rows(session_id, tenant_id)
     except Exception as exc:  # noqa: BLE001 - best-effort: the call still starts
         logger.error("session rows not created: %r", exc)
-    return {"session_id": session_id, "tenant_id": TENANT_ID}
+    return {"session_id": session_id, "tenant_id": tenant_id}
 
 
 def main() -> int:

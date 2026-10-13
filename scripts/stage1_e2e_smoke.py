@@ -45,7 +45,7 @@ import websockets
 
 SAMPLE_RATE = 16000
 CHUNK_MS = 100
-TENANT_ID = "demo-tenant-1"
+TENANT_ID = os.getenv("VOICE_TENANT_ID", "acme-it-demo")
 
 DEFAULT_WAV1 = "artifacts/asr_benchmark/audio/synthetic-telephony/synth_00_8k.wav"
 DEFAULT_WAV2 = "artifacts/asr_benchmark/audio/synthetic-telephony/synth_01_8k.wav"

@@ -1,11 +1,13 @@
-from pydantic import BaseModel, Field
-from typing import Optional, List
 from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict, Field
+
 from app.orchestrator.state_machine import SessionState
+
 
 class TenantCreate(BaseModel):
     display_name: str
-    settings_revision: Optional[str] = None
+    settings_revision: str | None = None
 
 class TenantResponse(BaseModel):
     tenant_id: str
@@ -15,7 +17,7 @@ class TenantResponse(BaseModel):
 class SessionCreateRequest(BaseModel):
     tenant_id: str
     channel: str = Field(default="webrtc", description="Канал связи, например, sip, webrtc или mock")
-    language: str = Field(default="ru")
+    language: str = Field(default="ru", pattern=r"^[a-z]{2,3}$")
 
 class SessionResponse(BaseModel):
     session_id: str
@@ -30,8 +32,8 @@ class TurnResponse(BaseModel):
     turn_id: str
     sequence_no: str
     started_at: datetime
-    redacted_text: Optional[str] = None
-    intent: Optional[str] = None
+    redacted_text: str | None = None
+    intent: str | None = None
 
 class SessionDetailResponse(BaseModel):
     session_id: str
@@ -39,7 +41,7 @@ class SessionDetailResponse(BaseModel):
     status: SessionState
     channel: str
     created_at: datetime
-    turns: List[TurnResponse] = []
+    turns: list[TurnResponse] = []
 
 class TranscriptCorrectionRequest(BaseModel):
     turn_id: str
@@ -50,5 +52,30 @@ class HandoffResponse(BaseModel):
     session_id: str
     status: str
     handoff_type: str  # "human" или "chat"
-    chat_link: Optional[str] = None
+    chat_link: str | None = None
     message: str
+
+
+class SourceRef(BaseModel):
+    chunk_id: str
+    title: str
+    canonical_url: str
+    crawled_at: datetime | None = None
+    valid_to: datetime | None = None
+
+
+class TextTurnRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    text: str = Field(min_length=1, max_length=1000)
+
+
+class TextTurnResponse(BaseModel):
+    session_id: str
+    turn_id: str
+    answer_text: str
+    answer_status: str
+    citation_ids: list[str]
+    sources: list[SourceRef]
+    fallback_reason: str | None = None
+    evidence_status: str | None = None
+    index_revision: str | None = None

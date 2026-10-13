@@ -1,5 +1,5 @@
 import re
-import json
+
 from pydantic import BaseModel
 
 
@@ -21,9 +21,7 @@ class GuardrailsService:
 
     def check_retrieved_content(self, text: str) -> bool:
         """Проверяет найденный контент на наличие попыток перехвата управления."""
-        if self.injection_patterns.search(text):
-            return False
-        return True
+        return not self.injection_patterns.search(text)
 
     def process_input(self, text: str) -> GuardrailDecision:
         categories = []
@@ -54,10 +52,9 @@ class GuardrailsService:
         for c_id in citation_ids:
             if c_id not in valid_source_ids:
                 return False  # Обнаружена выдуманная ссылка
+        if generated_json.get("answer_status") == "grounded" and not citation_ids:
+            return False
 
         # 3. Валидация разрешенных статусов ответа[cite: 17]
         valid_statuses = {"grounded", "needs_clarification", "no_evidence", "handoff"}
-        if generated_json.get("answer_status") not in valid_statuses:
-            return False
-
-        return True
+        return generated_json.get("answer_status") in valid_statuses
