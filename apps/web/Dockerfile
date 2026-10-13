@@ -1,17 +1,7 @@
-# Этап сборки
-FROM node:20-alpine AS builder
-WORKDIR /app
-
-COPY apps/web/package*.json ./
-RUN npm ci
-
-COPY apps/web/ ./
-RUN npm run build
-
-# Этап раздачи
 FROM nginx:alpine
-COPY --from=builder /app/dist /usr/share/nginx/html
-COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
+
+# Создаем тестовую заглушку, пока Разработчик 4 не напишет Frontend
+RUN echo "<h1>MTS Voice Agent - API is Running</h1><p>Frontend will be available here.</p>" > /usr/share/nginx/html/index.html
 
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]

@@ -6,8 +6,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev &
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Копируем общие пакеты и код API
-COPY packages/ ./packages/
+# Копируем конфигурацию и скрипты миграций
+COPY alembic.ini .
+COPY migrations/ ./migrations/
+
+# Копируем код приложения
 COPY app/ ./app/
 
 EXPOSE 8000

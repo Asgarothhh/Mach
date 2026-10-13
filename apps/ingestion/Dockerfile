@@ -8,6 +8,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Копируем код ingestion
 COPY apps/ingestion/ ./apps/ingestion/
-COPY packages/ ./packages/
 
 CMD ["python", "-m", "apps.ingestion.main"]
