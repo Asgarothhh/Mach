@@ -1,0 +1,99 @@
+# Model / voice checkpoint lock for the speech cascade (ML).
+#
+# Normative rule (SSOT §4.2): before a checkpoint or voice is enabled, record
+# its source URL, version/commit, SHA-256, code license, weights license,
+# usage restrictions and the review date. Never edit `sha256` by hand: run
+#
+#     python scripts/fetch_models.py <id> --output-dir <dir>
+#
+# and paste the printed value.
+version: 1
+reviewed_at: "2026-10-13"
+reviewer: "ML"
+entries:
+  - id: silero-vad
+    kind: vad
+    title: "Silero VAD v6"
+    source_url: https://github.com/snakers4/silero-vad
+    pin: "TODO: pin pip version at first install (silero-vad==x.y.z)"
+    sha256: null
+    license:
+      code: MIT
+      weights: MIT
+    commercial_use: allowed
+    status: approved-dev
+    notes: >
+      Per-frame speech-probability model; endpointing logic and thresholds are
+      ours (speech/vad/silero_vad.py), starting values per SSOT §5.3.
+  - id: silero-tts-v5_5_ru
+    kind: tts
+    title: "Silero TTS v5.5 RU (voices: aidar, baya, kseniya, xenia, eugene)"
+    source_url: https://models.silero.ai/models/tts/ru/v5_5_ru.pt
+    model_id: v5_5_ru
+    sample_rates: [8000, 24000, 48000]
+    pin: "v5_5_ru.pt (sha256 pinned after first fetch)"
+    sha256: "50081637b602126ee06cb3bc8a744d25651d2da149ee8864b9a379bfdd934437"
+    license:
+      code: "CC BY-NC-SA 4.0 (silero-models repo)"
+      weights: "CC BY-NC-SA 4.0"
+    commercial_use: not-allowed-without-separate-license
+    status: demo-only
+    notes: >
+      Supports question intonation ("*intonation center*", habr.com/ru/articles/1015942),
+      automatic stress and homographs; 8 kHz output fits telephony directly.
+      NON-COMMERCIAL license: demo stand and internal evaluation only until a
+      commercial license or an approved alternative is recorded (see LICENSES.md).
+  - id: silero-tts-v5_cis_base_nostress
+    kind: tts
+    title: "Silero TTS v5 CIS base (nostress) — ru_* speakers"
+    source_url: https://models.silero.ai/models/tts/ru/v5_cis_base_nostress.pt
+    sample_rates: [8000, 24000, 48000]
+    sha256: null
+    license:
+      code: "MIT (LICENSE_CIS)"
+      weights: MIT
+    commercial_use: allowed
+    status: candidate
+    notes: >
+      MIT-licensed fallback for production: ru_* speakers need explicit stress
+      markup for Slavic languages (pair with silero-stress tooling after its
+      license is reviewed). No question intonation.
+  - id: faster-whisper-large-v3-turbo
+    kind: asr-baseline
+    title: "faster-whisper / Whisper large-v3-turbo"
+    source_url: https://github.com/SYSTRAN/faster-whisper
+    weights_url: https://huggingface.co/Systran/faster-whisper-large-v3-turbo
+    sha256: null
+    license:
+      code: MIT
+      weights: MIT
+    commercial_use: allowed
+    status: candidate
+    notes: >
+      Quality baseline transcriber (not streaming by itself). WER/latency
+      benchmark against sherpa-onnx streaming candidates runs on our own test
+      set (SSOT §5.4).
+  - id: sherpa-onnx-streaming-ru
+    kind: asr-streaming
+    title: "sherpa-onnx streaming Russian models (T-One CTC RU / Zipformer RU candidates)"
+    source_url: https://github.com/k2-fsa/sherpa-onnx
+    pin: "TODO: pin release tag + archive sha256 at model selection"
+    sha256: null
+    license:
+      code: Apache-2.0
+      weights: "per-model (review at selection)"
+    commercial_use: review
+    status: candidate
+    notes: "Streaming interim hypotheses are the product requirement; per-model license review pending."
+  - id: piper-tts
+    kind: tts-alternative
+    title: "Piper TTS + Russian voice"
+    source_url: https://github.com/OHF-Voice/piper1-gpl
+    pin: "TODO"
+    sha256: null
+    license:
+      code: GPL-3.0
+      weights: "per-voice (review at selection)"
+    commercial_use: review
+    status: candidate
+    notes: "Baseline candidate named by SSOT §4.2; every voice model has its own license."
