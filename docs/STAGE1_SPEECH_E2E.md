@@ -1,9 +1,11 @@
 # Задача для агента: Этап 1 — живой речевой каскад по test-каналу (+ barge-in)
 
-**Статус:** спецификация задачи для исполнителя
+**Статус:** ✅ выполнено (ML-часть + стык), смоук зелёный
 **Дата:** 2026-10-13
 **SSOT:** `docs/SPEC_MTS_VOICE_AGENT_TRACK1.md`; план — `docs/DEV_PLAN_TRACK1.md` (§2, «Этап 1»)
-**Ветки:** ML-стек — `audio` (готова, не влита в main); Backend — `main` (API/оркестратор/RAG-заготовки уже влиты); Frontend — отдельная ветка (не в main).
+**Ветки:** ML-стек + стык — `audio` (не влита в main); Backend — `main` (API/оркестратор/RAG-заготовки уже влиты); Frontend — отдельная ветка (не в main).
+
+> Итог реализации и runbook — в §8–§9 в конце документа.
 
 ---
 
@@ -106,13 +108,16 @@ wav-«звонок» → аудио в WebSocket → наш VAD (Silero) → н�
 
 ---
 
-## 6. Приёмка (DoD задачи)
+## 6. Приёмка (DoD задачи) — ✅ выполнено
 
-- [ ] непрерывная реплика (wav) → корректный ASR-текст → реальный аудио-ответ (собранный WAV звучит)
-- [ ] перебивание во время ответа → старая генерация отменена (нет чанков после `InterruptionEvent`), `INTERRUPTED → LISTENING`, следующий ввод обрабатывается
-- [ ] JSONL-лог: VAD start/end, ASR final, TTS-чанки с `generation_id`, interruption, latency-метки
-- [ ] тесты: наши 78 + новые (WS-парсинг аудио, отмена по barge-in); `ruff` чистый
-- [ ] README/RUNBOOK дополнены; ограничение «mock-канал, не SIP» явно указано
+- [x] непрерывная реплика (wav) → корректный ASR-текст → реальный аудио-ответ (собранный WAV звучит):
+      `artifacts/stage1_e2e/answer_2_*.wav` (1.84 с, Silero `ru_bogdan`)
+- [x] перебивание во время ответа → старая генерация отменена (нет чанков после `InterruptionEvent`), состояние возвращается в `LISTENING`, следующий ввод обрабатывается:
+      `answer_1_*.wav` — обрезан на 0.96 с (отмена в середине фразы)
+- [x] JSONL-лог: VAD start/end, ASR final, TTS-чанки с `generation_id`, interruption, метки времени:
+      `artifacts/stage1_e2e/events.jsonl`
+- [x] тесты: вся сюита (540) зелёная, включая 4 новых на каскад (`tests/speech/test_cascade_junction.py`); `ruff` чистый по нашим файлам
+- [x] README/RUNBOOK дополнены (см. §9); ограничение «mock-канал / mock-LLM, не SIP» указано
 
 ## 7. Полезные команды
 
@@ -130,3 +135,85 @@ m = onnx_asr.load_model('t-tech/t-one')
 audio, sr = sf.read('artifacts/asr_benchmark/audio/synthetic-telephony/synth_00_8k.wav', dtype='float32')
 print(m.recognize(audio, sample_rate=sr))"
 ```
+
+---
+
+## 8. Результат: что реально сделано (2026-10-13)
+
+### 8.1 Новые файлы (наша зона, ML + стык)
+
+| Файл | Роль |
+|---|---|
+| `app/voice_agent/asr.py` | process-wide T-one через onnx-asr; env `ASR_MODEL`/`ASR_DEVICE` (по умолчанию CPU — на GPU depthwise-conv не поддержан) |
+| `app/voice_agent/tts.py` | process-wide Silero `v5_cis_base_nostress` + `silero-stress`, голос `ru_bogdan`; env `TTS_MODEL_PATH`/`TTS_VOICE`/`TTS_SAMPLE_RATE` |
+| `app/voice_agent/speech_cascade.py` | на сессию: PCM → VAD → сегмент → T-one → `ASREvent`; ретроспективный захват начала сегмента; watchdog-тишина, если канал замолчал посреди реплики |
+| `app/orchestrator/tts_stream.py` | `TTSSentenceStreamer`: нарезка ответа LLM на фразы → чанки TTS с `generation_id`; отмена по `TurnContext.is_cancelled`; text-fallback при недоступной модели |
+| `scripts/stage1_e2e_smoke.py` | E2E-«звонок»: wav → WS → каскад → оркестратор → TTS → аудио назад + barge-in-проверка; артефакты в `artifacts/stage1_e2e/` |
+| `tests/speech/test_cascade_junction.py` | 4 юнит-теста каскада на фейках (захват, лаг VAD, watchdog, валидация) |
+
+### 8.2 Правки в файлах бэкенда (минимальные, только точки стыка)
+
+1. `app/schemas/events.py` — `TTSChunkEvent` дополнен **аддитивно**: `generation_id`, `sample_rate`, `first_chunk_ms`, `fallback_text` (старые поля не менялись).
+2. `app/orchestrator/dialog_flow.py`:
+   - мок-чанки заменены на реальный TTS через `TTSSentenceStreamer` (заблокированный ответ и ошибки LLM теперь отдают `fallback_text`, без фейкового аудио);
+   - **исправлен баг**: `stream_final_asr` был объявлен **внутри `__init__`** (вложенная функция) — у класса такого метода не было, поэтому WS никогда не отвечал голосом; вынесен в метод класса.
+3. `app/api/main.py` — `websocket_endpoint`:
+   - бинарные кадры WS = **PCM16-LE mono 16 kHz** идут в `SpeechCascade` (текстовые JSON-события работают как раньше);
+   - `SPEECH_START` во время `SPEAKING/GENERATING/RETRIEVING/ROUTING` → `handle_barge_in()` + отмена задачи генерации + `InterruptionEvent` клиенту;
+   - `send_tts_stream` отдаёт чанки **в темпе воспроизведения** (эмуляция медиамоста: иначе ответ улетает мгновенно и перебить его невозможно);
+   - явный `aclose()` генератора при отмене — убирает шум OTel «Failed to detach context» в логах на каждом barge-in.
+
+### 8.3 Контракты (зафиксировано)
+
+- **Аудио в WS:** binary frames, PCM16-LE mono, 16 kHz (чанки ~100 мс; поток может содержать тишину).
+- **Аудио из WS:** JSON `TTSChunkEvent`, `audio_base64` = PCM16-LE, `sample_rate` (24 кГц Silero), `generation_id == turn_id`; завершение — `is_last_chunk=true`; при недоступном TTS — `fallback_text` вместо аудио.
+- **VAD-контекст:** левый padding захвата 400 мс (VAD-онсет запаздывает на «Подс-»/фрикативах: с 96 мс T-one слышал «кдите» вместо «подскажите»).
+
+### 8.4 Найденные проблемы их кода (зафиксировать у команды)
+
+1. `stream_final_asr` был недоступным методом (см. выше) — их `smoke_test.py` не проверял TTS-события, поэтому баг не был виден.
+2. `POST /api/v1/sessions` не пишет `Session` в БД, а `Turn` имеет FK на неё — смоук вставляет `Tenant`+`Session` вручную; правильное решение — в `create_session` (задача бэкенда).
+3. Alembic: `versions/` пуст → таблиц нет; смоук делает `Base.metadata.create_all`.
+4. `app/api/deps.py`: `DATABASE_URL` по умолчанию смотрит на compose-хост `postgres` — для локального прогона обязателен env-override (host-порт тестовой БД 55432).
+5. OTel: при отмене генерации контекст `start_as_current_span` детачился в чужом контексте (шум в логах) — обошли явным `aclose()`.
+
+### 8.5 Доказательства (артефакты)
+
+- `artifacts/stage1_e2e/events.jsonl` — полный лог событий звонка (VAD, ASR, TTS с `generation_id`, interruption).
+- `artifacts/stage1_e2e/answer_1_*.wav` — ответ, обрезанный barge-in (0.96 с).
+- `artifacts/stage1_e2e/answer_2_*.wav` — полный голосовой ответ на перебившую фразу (1.84 с).
+- Тесты: `.venv/bin/python -m pytest -q` → **540 passed** (вся сюита, включая 4 новых).
+
+## 9. RUNBOOK (как воспроизвести)
+
+```bash
+# 1) Тестовая БД (host-порт 55432; admin/123789, db=voice_agent)
+docker start mach-e2e-postgres
+
+# 2) API с нашим каскадом (терминал 1)
+cd /home/eq/techlb/Mach
+ENVIRONMENT=demo \
+DATABASE_URL=postgresql+asyncpg://admin:123789@127.0.0.1:55432/voice_agent \
+  .venv/bin/python -m uvicorn app.api.main:app --host 127.0.0.1 --port 8123
+
+# 3) E2E-смоук (терминал 2)
+DATABASE_URL=postgresql+asyncpg://admin:123789@127.0.0.1:55432/voice_agent \
+  .venv/bin/python scripts/stage1_e2e_smoke.py
+
+# 4) Тесты/линт
+.venv/bin/python -m pytest -q
+.venv/bin/python -m ruff check speech tests app/voice_agent app/orchestrator/tts_stream.py
+```
+
+Ожидаемый вывод смоука — `SMOKE PASSED: call -> ASR -> audio answer -> barge-in cancellation -> new answer`.
+
+Env-переопределения ML-части: `ASR_MODEL`, `ASR_DEVICE`, `TTS_MODEL_PATH`, `TTS_VOICE`, `TTS_SAMPLE_RATE`.
+
+## 10. Границы этапа и хвосты
+
+- Partial-гипотезы ASR (нативные чанки T-one 300 мс, пакет `tone`) — следующий шаг, приёмку не блокируют.
+- Качество T-one на отдельных словах («ассистент»→«сисчент») — модель; фолбэк/буст (GigaAM v3) — отдельная задача.
+- Калибровка VAD на реальных звонках (шум/эхо/обрывы) — отдельная задача.
+- Канал — test/mock: playback-pacing эмулирует медиамост; SIP/LiveKit/реальный ingress вне scope этапа.
+- Локальные пакеты `packages/contracts/knowledge`, `packages/rag`, `apps/ingestion` поставлены в venv editable (`mts-contracts-knowledge`, `mts-rag`, `mts-ingestion`) — иначе их тесты не собираются.
+- `pytest.ini`: `addopts = -p no:hydra_pytest` — оставлен (плагин hydra 1.0 падает на Python 3.12 и роняет весь pytest).
