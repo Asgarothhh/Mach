@@ -8,6 +8,7 @@ from fastapi import FastAPI, Depends, HTTPException, status, WebSocket, WebSocke
 from fastapi.middleware.cors import CORSMiddleware
 
 # Импорт схем и моделей
+from app.schemas.api import HandoffResponse
 from app.schemas.api import SessionCreateRequest, SessionResponse, ErrorResponse
 from app.schemas.events import ASREvent, VADEvent, InterruptionEvent
 from app.models.database import Turn
@@ -178,3 +179,46 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
         if generation_task:
             generation_task.cancel()
         logger.info("ws_disconnected", session_id=session_id)
+
+
+@app.post("/api/v1/sessions/{session_id}/handoff/human", response_model=HandoffResponse, tags=["Sessions"])
+async def handoff_to_human(session_id: str):
+    """Перевод сессии на живого оператора (SIP-трансфер)."""
+    if session_id not in session_manager.active_sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Меняем статус на HANDOFF
+    session_manager.transition(session_id, SessionState.HANDOFF)
+
+    # В реальном приложении здесь будет логика отправки SIP REFER или сигнала в LiveKit
+    logger.info("handoff_human_initiated", session_id=session_id)
+
+    return HandoffResponse(
+        session_id=session_id,
+        status="success",
+        handoff_type="human",
+        message="Session transferred to human operator"
+    )
+
+
+@app.post("/api/v1/sessions/{session_id}/handoff/chat", response_model=HandoffResponse, tags=["Sessions"])
+async def handoff_to_chat(session_id: str):
+    """Перевод сессии в текстовый чат (генерация короткой ссылки)."""
+    if session_id not in session_manager.active_sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    session_manager.transition(session_id, SessionState.HANDOFF)
+
+    # Генерация уникальной ссылки для продолжения в браузере/приложении
+    chat_token = str(uuid.uuid4())[:8]
+    chat_url = f"{os.getenv('APP_PUBLIC_ORIGIN', 'http://localhost:3000')}/chat/{session_id}?token={chat_token}"
+
+    logger.info("handoff_chat_initiated", session_id=session_id, chat_url=chat_url)
+
+    return HandoffResponse(
+        session_id=session_id,
+        status="success",
+        handoff_type="chat",
+        chat_link=chat_url,
+        message="Chat link generated successfully"
+    )
