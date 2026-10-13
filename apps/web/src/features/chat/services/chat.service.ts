@@ -6,6 +6,7 @@ import { sendBackendTextTest } from './backendTextTest.service';
 export interface SendTextMessageInput {
   sessionId: string;
   text: string;
+  tenantId?: string;
 }
 
 export interface SendTextMessageResult {
@@ -13,6 +14,8 @@ export interface SendTextMessageResult {
   citation_ids?: string[];
   citations?: SourceCitation[];
   answer_status?: 'grounded' | 'needs_clarification' | 'no_evidence' | 'handoff';
+  fallback_reason?: string;
+  evidence_status?: string;
 }
 
 /** Explicit canned response for UI work only. This is not an LLM call or MTS fact. */

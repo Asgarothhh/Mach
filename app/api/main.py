@@ -38,7 +38,7 @@ from app.schemas.api import (
 from app.schemas.events import ASREvent, VADEvent
 from app.security.guardrails import GuardrailsService
 from app.security.telemetry import get_logger
-from app.voice_agent.speech_cascade import SpeechCascade
+from app.voice_agent.factory import build_cascade, voice_pipeline_status
 from speech.contracts import (
     ASREvent as SpeechASREvent,
     SpeechError as SpeechPipelineError,
@@ -112,6 +112,7 @@ async def readiness():
     checks = {
         "retriever": "ok" if retriever_ok else "unavailable",
         "postgres": postgres,
+        "voice": voice_pipeline_status(),
     }
     body = {"status": "ready" if retriever_ok else "not_ready", "checks": checks}
     if retriever_ok:
@@ -209,11 +210,20 @@ async def send_tts_stream(websocket: WebSocket, session_id: str, asr_text: str):
         stream = dialog_orchestrator.stream_final_asr(session_id, asr_text)
         try:
             async for tts_event in stream:
+                context = session_manager.active_turns.get(session_id)
+                if context is not None and context.is_cancelled:
+                    break
+                if (
+                    tts_event.generation_id
+                    and context is not None
+                    and tts_event.generation_id != context.turn_id
+                ):
+                    continue
                 await websocket.send_json({
                     "type": "TTSChunkEvent",
                     "payload": tts_event.model_dump()
                 })
-                if tts_event.audio_base64:
+                if tts_event.audio_base64 and not tts_event.is_last_chunk:
                     pcm_bytes = len(tts_event.audio_base64) * 3 // 4
                     sample_rate = tts_event.sample_rate or 24000
                     audio_seconds = pcm_bytes / 2 / sample_rate
@@ -255,7 +265,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
     session_manager.transition(session_id, SessionState.CONNECTING)
 
     generation_task: asyncio.Task | None = None
-    speech: SpeechCascade | None = None
+    speech = None
 
     async def stop_generation() -> None:
         nonlocal generation_task
@@ -318,8 +328,8 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
         )
 
     try:
-        speech = SpeechCascade(session_id, on_vad=on_vad, on_asr=on_asr)
-    except SpeechPipelineError as exc:
+        speech = build_cascade(session_id, on_vad=on_vad, on_asr=on_asr)
+    except Exception as exc:  # noqa: BLE001 - keep JSON WS path even if PCM cascade fails
         logger.error(
             "speech_pipeline_unavailable",
             session_id=session_id,
@@ -358,6 +368,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                         session_manager.transition(session_id, SessionState.TRANSCRIBING_FINAL)
                         logger.info("asr_final_received", session_id=session_id, turn_id=asr_event.turn_id)
 
+                        await stop_generation()
                         generation_task = asyncio.create_task(
                             send_tts_stream(websocket, session_id, asr_event.text)
                         )
@@ -368,10 +379,18 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     session_manager.transition(session_id, new_state)
 
                 elif event_type == "InterruptionEvent":
+                    interrupted = session_manager.active_turns.get(session_id)
                     session_manager.handle_barge_in(session_id)
-                    if generation_task:
-                        generation_task.cancel()
+                    await stop_generation()
                     logger.info("barge_in_triggered", session_id=session_id)
+                    await _safe_send_json(websocket, {
+                        "type": "InterruptionEvent",
+                        "payload": {
+                            "session_id": session_id,
+                            "interrupted_turn_id": interrupted.turn_id if interrupted else "",
+                            "timestamp_ms": data.get("payload", {}).get("timestamp_ms", 0),
+                        },
+                    })
 
             except json.JSONDecodeError:
                 logger.warning("invalid_json_received", session_id=session_id)

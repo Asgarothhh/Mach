@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, CheckCircle2, Clock3, FileText, Headphones, History, MessageSquare, PencilLine, Save, ShieldCheck, UserRound, X } from 'lucide-react';
+import { ArrowLeft, Clock3, FileText, Headphones, History, MessageSquare, PencilLine, Save, ShieldCheck, UserRound, X } from 'lucide-react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { SectionHeading } from '../../../shared/components/SectionHeading';
 import { StatusBadge } from '../../../shared/components/StatusBadge';

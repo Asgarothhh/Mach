@@ -27,7 +27,7 @@ export interface CallListResult {
 export async function listCalls(filters: CallFilters = {}): Promise<CallListResult> {
   const page = Math.max(1, filters.page ?? 1);
   const pageSize = Math.min(100, Math.max(1, filters.pageSize ?? 8));
-  if (env.backendTextTest) {
+  if (env.backendAdminSessions) {
     const params = new URLSearchParams({ limit: '100' });
     params.set('tenant_id', env.backendTestTenantId);
     const sessions = await apiRequest<Array<{session_id: string; tenant_id?: string; status: string; created_at: string; ended_at?: string | null; channel?: string; language?: string; turn_count?: number}>>(`/admin/sessions?${params.toString()}`);
@@ -76,23 +76,7 @@ export async function listCalls(filters: CallFilters = {}): Promise<CallListResu
     return { items: filtered.slice(start, start + pageSize), total: filtered.length, page, page_size: pageSize };
   }
 
-  const params = new URLSearchParams();
-  if (filters.query) params.set('query', filters.query);
-  if (filters.status && filters.status !== 'all') params.set('status', filters.status);
-  if (filters.route && filters.route !== 'all') params.set('route', filters.route);
-  if (filters.channel && filters.channel !== 'all') params.set('channel', filters.channel);
-  if (filters.intent && filters.intent !== 'all') params.set('intent', filters.intent);
-  if (filters.from) params.set('from', filters.from);
-  if (filters.to) params.set('to', filters.to);
-  params.set('page', String(page));
-  params.set('page_size', String(pageSize));
-  const suffix = `?${params.toString()}`;
-  // Tenant is derived from authenticated API identity; never trust a browser-supplied tenant_id as authorization.
-  // Backend should expose the agreed paginated response; array responses are normalized for transition compatibility.
-  const endpoint = filters.scope === 'admin' ? '/admin/sessions' : '/calls';
-  const response = await apiRequest<CallListResult | CallSummary[]>(`${endpoint}${suffix}`);
-  if (Array.isArray(response)) return { items: response, total: response.length, page, page_size: pageSize };
-  return response;
+  return { items: [], total: 0, page, page_size: pageSize };
 }
 
 export async function getCallDetail(
@@ -100,25 +84,39 @@ export async function getCallDetail(
   tenantId: string,
   scope: 'tenant' | 'admin' = 'tenant',
 ): Promise<CallDetail | null> {
-  if (env.backendTextTest) {
-    const turns = await apiRequest<Array<{turn_id: string; sequence_no: number; redacted_text?: string | null; intent?: string | null; started_at?: string; confidence?: number | null}>>(`/admin/sessions/${encodeURIComponent(resourceId)}/turns`);
-    const callSummary: CallSummary = {
-      call_id: resourceId, session_id: resourceId, tenant_id: env.backendTestTenantId,
-      created_at: turns[0]?.started_at ?? new Date().toISOString(), status: 'completed', channel: 'test_call',
-      caller_alias: 'Локальный test call', language: 'ru', intent: 'general_question', route_decision: 'voice',
-      consent_state: 'not_required_demo', turn_count: turns.length,
-    };
-    return {
-      call: callSummary,
-      turns: turns.map((turn, index) => ({ turn_id: turn.turn_id, sequence_no: turn.sequence_no ?? index + 1, role: 'caller', text: turn.redacted_text ?? '', status: 'final', started_at: turn.started_at ?? new Date().toISOString(), ...(turn.confidence == null ? {} : { confidence: turn.confidence }) })),
-      routing_events: [], sources: [], audio_recorded: false, transcript_revision: 'backend-demo-r1',
-      permissions: { can_correct_transcript: false, can_view_original: false, can_export: false },
-    };
+  void scope;
+  if (!env.backendAdminSessions) {
+    if (env.demoMode) return buildDemoCallDetail(resourceId, tenantId);
+    return null;
   }
-  if (env.demoMode) return buildDemoCallDetail(resourceId, tenantId);
-  // Tenant detail is keyed by call_id; admin detail is keyed by session_id.
-  const endpoint = scope === 'admin' ? '/admin/sessions' : '/calls';
-  return apiRequest<CallDetail>(`${endpoint}/${encodeURIComponent(resourceId)}`);
+  const detail = await apiRequest<{
+    session_id: string;
+    tenant_id?: string;
+    status: string;
+    channel?: string;
+    created_at: string;
+    turns?: Array<{ turn_id: string; sequence_no?: string | number; redacted_text?: string | null; intent?: string | null; started_at?: string }>;
+  }>(`/admin/sessions/${encodeURIComponent(resourceId)}`);
+  const turns = detail.turns ?? [];
+  const callSummary: CallSummary = {
+    call_id: resourceId, session_id: resourceId, tenant_id: detail.tenant_id ?? env.backendTestTenantId,
+    created_at: detail.created_at ?? turns[0]?.started_at ?? new Date().toISOString(), status: 'completed', channel: 'test_call',
+    caller_alias: 'Локальный test call', language: 'ru', intent: 'general_question', route_decision: 'voice',
+    consent_state: 'not_required_demo', turn_count: turns.length,
+  };
+  return {
+    call: callSummary,
+    turns: turns.map((turn, index) => ({
+      turn_id: turn.turn_id,
+      sequence_no: Number(turn.sequence_no) || index + 1,
+      role: 'caller',
+      text: turn.redacted_text ?? '',
+      status: 'final',
+      started_at: turn.started_at ?? detail.created_at,
+    })),
+    routing_events: [], sources: [], audio_recorded: false, transcript_revision: 'backend-demo-r1',
+    permissions: { can_correct_transcript: false, can_view_original: false, can_export: false },
+  };
 }
 
 export async function correctCallTranscript(
@@ -130,6 +128,6 @@ export async function correctCallTranscript(
 ): Promise<CallDetail | null> {
   if (env.backendTextTest) throw new Error('Коррекция транскрипта ещё не реализована в загруженном backend. Здесь доступен только просмотр тестовых ходов.');
   if (env.demoMode) return saveDemoTranscriptCorrection(lookupId, tenantId, input.turn_id, input.corrected_text, input.reason);
-  await apiRequest<unknown>(`/calls/${encodeURIComponent(callId)}/transcript-corrections`, { method: 'POST', body: input });
+  await apiRequest<unknown>(`/admin/sessions/${encodeURIComponent(callId)}/transcript-corrections`, { method: 'POST', body: input });
   return getCallDetail(lookupId, tenantId, scope);
 }

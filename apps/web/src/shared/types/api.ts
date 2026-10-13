@@ -1,7 +1,7 @@
 export interface CreateSessionResponse {
   session_id: string;
-  /** Short-lived participant token issued by our backend. Never create it in the browser. */
-  token: string;
+  /** Present only if LiveKit is configured. Never create tokens in the browser. */
+  token?: string;
   expires_at?: string;
 }
 

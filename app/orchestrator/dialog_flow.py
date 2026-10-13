@@ -1,7 +1,5 @@
 import asyncio
-import base64
 import json
-import os
 import time
 import uuid
 from collections.abc import AsyncGenerator
@@ -485,16 +483,8 @@ class DialogOrchestrator:
         if not text:
             return
 
-        # Тестовый дубль TTS для юнит-тестов/CI (без загрузки весов модели):
-        # один чанк с непустым audio_base64 и is_last_chunk=True.
-        if os.getenv("VOICE_TTS_MODE", "real").lower() in {"off", "mock"}:
-            yield self._create_mock_tts_chunk(
-                session_id, outcome.turn_id, text, is_last=True
-            )
-            return
-
-        # Реальный потоковый TTS (ML-часть): фразы по мере синтеза,
-        # отмена по barge-in через TurnContext.is_cancelled.
+        # Mock and live TTS both go through TTSSentenceStreamer so SPEAKING,
+        # generation_id, sample_rate and barge-in cancel work the same way.
         turn_context = context
         if turn_context is None:
             turn_context = TurnContext(
@@ -596,19 +586,3 @@ class DialogOrchestrator:
     @staticmethod
     def _event_from_payload(payload: dict[str, object]) -> RetrievalEvent:
         return RetrievalEvent(**payload)
-
-    def _create_mock_tts_chunk(
-        self, session_id: str, turn_id: str, text: str, is_last: bool
-    ) -> TTSChunkEvent:
-        dummy_audio = base64.b64encode(text.encode("utf-8")).decode("utf-8")
-        kwargs = {
-            "session_id": session_id,
-            "turn_id": turn_id,
-            "timestamp_ms": int(time.time() * 1000),
-            "chunk_id": str(uuid.uuid4()),
-            "audio_base64": dummy_audio,
-            "is_last_chunk": is_last,
-        }
-        if "text" in getattr(TTSChunkEvent, "model_fields", {}):
-            kwargs["text"] = text
-        return TTSChunkEvent(**kwargs)

@@ -16,9 +16,14 @@ services:
       - "8000:8000"
     env_file:
       - .env
+    environment:
+      VOICE_ASR_MODE: ${VOICE_ASR_MODE:-mock}
+      VOICE_TTS_MODE: ${VOICE_TTS_MODE:-mock}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-123789}@postgres:5432/${POSTGRES_DB:-voice_agent}
+      SYNC_DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-123789}@postgres:5432/${POSTGRES_DB:-voice_agent}
     restart: unless-stopped
     command: >
-      sh -c "alembic upgrade head && 
+      sh -c "alembic upgrade head &&
              uvicorn app.api.main:app --host 0.0.0.0 --port 8000"
     depends_on:
       postgres:
@@ -33,6 +38,12 @@ services:
     profiles: ["demo"]
     env_file:
       - .env
+    environment:
+      VOICE_ASR_MODE: ${VOICE_ASR_MODE:-mock}
+      VOICE_TTS_MODE: ${VOICE_TTS_MODE:-mock}
+      VOICE_AGENT_PORT: "8100"
+    ports:
+      - "8100:8100"
     restart: unless-stopped
     depends_on:
       - api
@@ -52,27 +63,37 @@ services:
 
   web:
     build:
-      context: .
-      dockerfile: apps/web/Dockerfile
+      context: ./apps/web
+      dockerfile: Dockerfile
+      args:
+        VITE_DEMO_MODE: "false"
+        VITE_API_BASE_URL: http://localhost:8000/api/v1
+        VITE_LIVEKIT_URL: ""
+        VITE_APP_NAME: MTS Inbound Voice Agent
+        VITE_BACKEND_TEXT_TEST: "true"
+        VITE_BACKEND_ADMIN_SESSIONS: "false"
+        VITE_BACKEND_TEST_TENANT_ID: acme-it-demo
     profiles: ["demo"]
     ports:
       - "3000:80"
     restart: unless-stopped
+    depends_on:
+      - api
 
   postgres:
     image: postgres:15-alpine
     profiles: ["demo"]
     environment:
-      - POSTGRES_USER=admin
-      - POSTGRES_PASSWORD=123789
-      - POSTGRES_DB=voice_agent
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-123789}
+      POSTGRES_DB: ${POSTGRES_DB:-voice_agent}
     volumes:
       - pg_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin -d voice_agent"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 5

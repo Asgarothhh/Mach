@@ -1,18 +1,22 @@
 import { useState, type FormEvent } from 'react';
 import { ArrowRight, Info, Mic, Send } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { MessageBubble } from '../../../shared/components/MessageBubble';
 import { SourceCard } from '../../../shared/components/SourceCard';
 import { StatusBadge } from '../../../shared/components/StatusBadge';
 import { env } from '../../../shared/config/env';
 import { demoSources } from '../../knowledge/data/demoSources';
 import { sendTextMessage } from '../../chat/services/chat.service';
+import { useTenant } from '../../tenant/model/TenantContext';
 import { useVoiceExperience } from '../model/VoiceExperienceContext';
 
 export function TextModePage() {
   const { conversation, voice } = useVoiceExperience();
+  const { tenantId } = useTenant();
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [lastStatus, setLastStatus] = useState<string | undefined>();
+  const [lastFallback, setLastFallback] = useState<string | undefined>();
   const navigate = useNavigate();
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -24,7 +28,9 @@ export function TextModePage() {
     setSending(true);
     conversation.addMessage('user', text, env.demoMode && !env.backendTextTest ? 'demo' : 'live');
     try {
-      const result = await sendTextMessage({ sessionId: voice.sessionId ?? '', text });
+      const result = await sendTextMessage({ sessionId: voice.sessionId ?? '', text, tenantId });
+      setLastStatus(result.answer_status);
+      setLastFallback(result.fallback_reason);
       conversation.addMessage('assistant', result.answer_text, env.demoMode && !env.backendTextTest ? 'demo' : 'live', {
         citations: result.citations ?? [],
       });
@@ -95,7 +101,12 @@ export function TextModePage() {
           </section>
           <section className="side-info-card">
             <h2>Из предыдущего ответа</h2>
+            {lastStatus && <StatusBadge tone={lastStatus === 'grounded' ? 'success' : 'warning'}>{lastStatus}</StatusBadge>}
+            {lastFallback && <p className="muted-copy">fallback_reason: {lastFallback}</p>}
             <p className="muted-copy">Источники отображаются рядом с ответом, когда их вернёт backend.</p>
+            {sources.length === 0 && latestAnswer && (
+              <p className="muted-copy">Подтверждений нет — источники не пришли или answer_status не grounded.</p>
+            )}
             <div className="source-stack">{sources.map((source) => <SourceCard key={source.id} source={source} compact />)}</div>
           </section>
           <div className="scope-note">

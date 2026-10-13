@@ -1,26 +1,31 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { env, liveVoiceConfigured } from '../../../shared/config/env';
+import { env, liveVoiceConfigured, wsVoiceConfigured } from '../../../shared/config/env';
 import type { TranscriptEvent, VoiceState } from '../../../shared/types/voice';
+import { useTenant } from '../../tenant/model/TenantContext';
 import { createVoiceSession, endVoiceSession } from '../services/session.service';
 import { LiveKitVoiceClient } from '../services/livekit.service';
+import { VoiceWsClient } from '../services/voiceWs.service';
 
 type Options = {
   onTranscript: (event: TranscriptEvent) => void;
 };
 
 export function useVoiceSession({ onTranscript }: Options) {
+  const { tenantId } = useTenant();
   const [state, setState] = useState<VoiceState>('idle');
   const [notice, setNotice] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [clockNow, setClockNow] = useState(Date.now());
+  const [channelLabel, setChannelLabel] = useState('Browser test channel / mock — не телефония');
 
   useEffect(() => {
     if (!startedAt) return;
     const timer = window.setInterval(() => setClockNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, [startedAt]);
-  const clientRef = useRef<LiveKitVoiceClient | null>(null);
+  const liveKitRef = useRef<LiveKitVoiceClient | null>(null);
+  const wsRef = useRef<VoiceWsClient | null>(null);
   const demoTimerRef = useRef<number | null>(null);
   const onTranscriptRef = useRef(onTranscript);
   onTranscriptRef.current = onTranscript;
@@ -28,9 +33,8 @@ export function useVoiceSession({ onTranscript }: Options) {
   const start = useCallback(async () => {
     setNotice(null);
     if (env.demoMode) {
-      // Explicitly simulated UI flow; no audio is sent and no backend session is created.
+      setChannelLabel('DEMO · синтетическая сессия, без микрофона');
       setState('connecting');
-      setNotice(null);
       if (demoTimerRef.current !== null) window.clearTimeout(demoTimerRef.current);
       demoTimerRef.current = window.setTimeout(() => {
         setStartedAt(Date.now());
@@ -39,32 +43,60 @@ export function useVoiceSession({ onTranscript }: Options) {
       }, 1200);
       return;
     }
-    if (!liveVoiceConfigured) {
-      setState('degraded');
-      setNotice('Не задан VITE_LIVEKIT_URL. Проверьте frontend .env и перезапустите Vite.');
+    if (liveVoiceConfigured) {
+      setChannelLabel('LiveKit (не SIP). Требуется media token от backend.');
+      setState('requesting_microphone');
+      let createdSessionId: string | null = null;
+      try {
+        const session = await createVoiceSession(tenantId);
+        createdSessionId = session.session_id;
+        setSessionId(session.session_id);
+        if (!session.token) {
+          throw new Error('LiveKit URL задан, но POST /sessions не вернул media token. Очистите VITE_LIVEKIT_URL, чтобы использовать WS mock-канал.');
+        }
+        setState('connecting');
+        const client = new LiveKitVoiceClient({
+          onState: setState,
+          onTranscript: (event) => onTranscriptRef.current(event),
+          onError: setNotice,
+        });
+        liveKitRef.current = client;
+        await client.connect(env.liveKitUrl, session.token);
+        setStartedAt(Date.now());
+        setState('listening');
+      } catch (error) {
+        await liveKitRef.current?.disconnect().catch(() => undefined);
+        liveKitRef.current = null;
+        if (createdSessionId) {
+          await endVoiceSession(createdSessionId).catch(() => undefined);
+        }
+        setSessionId(null);
+        setState('degraded');
+        setNotice(error instanceof Error ? error.message : 'Не удалось начать LiveKit-сессию.');
+      }
       return;
     }
 
+    setChannelLabel('Browser test channel / mock — не телефония');
     setState('requesting_microphone');
     let createdSessionId: string | null = null;
     try {
-      const session = await createVoiceSession();
+      const session = await createVoiceSession(tenantId);
       createdSessionId = session.session_id;
       setSessionId(session.session_id);
-      // The browser asks for microphone permission when LiveKit enables its microphone.
       setState('connecting');
-      const client = new LiveKitVoiceClient({
+      const client = new VoiceWsClient({
         onState: setState,
         onTranscript: (event) => onTranscriptRef.current(event),
         onError: setNotice,
       });
-      clientRef.current = client;
-      await client.connect(env.liveKitUrl, session.token);
+      wsRef.current = client;
+      await client.connect(session.session_id);
       setStartedAt(Date.now());
       setState('listening');
     } catch (error) {
-      await clientRef.current?.disconnect().catch(() => undefined);
-      clientRef.current = null;
+      await wsRef.current?.disconnect().catch(() => undefined);
+      wsRef.current = null;
       if (createdSessionId) {
         await endVoiceSession(createdSessionId).catch(() => undefined);
       }
@@ -73,21 +105,22 @@ export function useVoiceSession({ onTranscript }: Options) {
       setNotice(
         error instanceof Error
           ? error.message
-          : 'Не удалось начать голосовую сессию. Проверьте API и LiveKit.',
+          : 'Не удалось открыть WS mock-канал. Проверьте API /api/v1/ws/sessions/{id}.',
       );
     }
-  }, []);
+  }, [tenantId]);
 
   const stop = useCallback(async () => {
     setNotice(null);
     if (demoTimerRef.current !== null) { window.clearTimeout(demoTimerRef.current); demoTimerRef.current = null; }
-    await clientRef.current?.disconnect().catch(() => undefined);
-    clientRef.current = null;
+    await liveKitRef.current?.disconnect().catch(() => undefined);
+    liveKitRef.current = null;
+    await wsRef.current?.disconnect().catch(() => undefined);
+    wsRef.current = null;
     if (sessionId && !env.demoMode) {
       try {
         await endVoiceSession(sessionId);
       } catch {
-        // The media connection has already been closed; expose a safe message rather than raw details.
         setNotice('Голос отключён, но API не подтвердил завершение сессии. Проверьте журнал backend.');
       }
     }
@@ -103,7 +136,8 @@ export function useVoiceSession({ onTranscript }: Options) {
       return;
     }
     try {
-      if (clientRef.current) await clientRef.current.setMicrophoneEnabled(false);
+      if (liveKitRef.current) await liveKitRef.current.setMicrophoneEnabled(false);
+      if (wsRef.current) await wsRef.current.setMicrophoneEnabled(false);
       setState('degraded');
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Не удалось отключить микрофон.');
@@ -118,8 +152,13 @@ export function useVoiceSession({ onTranscript }: Options) {
       return true;
     }
     try {
-      if (clientRef.current && sessionId) {
-        await clientRef.current.setMicrophoneEnabled(true);
+      if (liveKitRef.current && sessionId) {
+        await liveKitRef.current.setMicrophoneEnabled(true);
+        setState('listening');
+        return true;
+      }
+      if (wsRef.current && sessionId) {
+        await wsRef.current.setMicrophoneEnabled(true);
         setState('listening');
         return true;
       }
@@ -140,7 +179,8 @@ export function useVoiceSession({ onTranscript }: Options) {
 
   useEffect(() => () => {
     if (demoTimerRef.current !== null) window.clearTimeout(demoTimerRef.current);
-    void clientRef.current?.disconnect();
+    void liveKitRef.current?.disconnect();
+    void wsRef.current?.disconnect();
   }, []);
 
   return {
@@ -148,6 +188,8 @@ export function useVoiceSession({ onTranscript }: Options) {
     notice,
     sessionId,
     startedAt,
+    channelLabel,
+    wsMock: wsVoiceConfigured,
     elapsedSeconds: startedAt ? Math.floor((clockNow - startedAt) / 1000) : 0,
     isConnected: state === 'listening' || state === 'processing' || state === 'speaking',
     start,

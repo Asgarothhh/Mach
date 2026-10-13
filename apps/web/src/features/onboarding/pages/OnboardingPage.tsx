@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Building2, Check, CheckCircle2, Clock3, PhoneCall, ShieldCheck, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Building2, Check, CheckCircle2, Clock3, PhoneCall, ShieldCheck, Sparkles } from 'lucide-react';
 import { SectionHeading } from '../../../shared/components/SectionHeading';
 import { StatusBadge } from '../../../shared/components/StatusBadge';
 import { env } from '../../../shared/config/env';

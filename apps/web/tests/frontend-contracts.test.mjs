@@ -12,6 +12,17 @@ test('demo mode is the safe default and browser env has no provider credentials'
   assert.match(envExample, /VITE_DEMO_MODE=true/);
   assert.match(envSource, /readBoolean\(import\.meta\.env\.VITE_DEMO_MODE, true\)/);
   assert.doesNotMatch(envExample, /OPENROUTER_API_KEY|LIVEKIT_API_SECRET|DATABASE_URL|QDRANT_API_KEY/);
+  assert.doesNotMatch(envSource, /import\.meta\.env\.(OPENROUTER_API_KEY|LIVEKIT_API_SECRET|VITE_OPENROUTER)/);
+});
+
+test('live API tenants are acme-it-demo and mts-public-demo', async () => {
+  const envExample = await read('.env.example');
+  const envSource = await read('src/shared/config/env.ts');
+  const tenants = await read('src/features/tenant/data/demoTenants.ts');
+  assert.match(envExample, /VITE_BACKEND_TEST_TENANT_ID=acme-it-demo/);
+  assert.match(envSource, /'acme-it-demo'/);
+  assert.match(tenants, /tenant_id: 'acme-it-demo'/);
+  assert.match(tenants, /tenant_id: 'mts-public-demo'/);
 });
 
 test('the Track 1 call history and scenario editor remain inside the admin layout', async () => {
@@ -37,12 +48,14 @@ test('browser microphone routes are clearly labelled as test mode', async () => 
   const layout = await read('src/app/layouts/PublicLayout.tsx');
   assert.match(layout, /Browser test console/);
   assert.match(layout, /SIP\/VoIP/);
+  assert.match(layout, /Browser test channel \/ mock/);
 });
 
-test('admin call detail uses session-scoped API while transcript correction uses call ID', async () => {
+test('admin call detail and transcript correction use session-scoped admin API', async () => {
   const calls = await read('src/features/calls/services/calls.service.ts');
-  assert.match(calls, /scope === 'admin' \? '\/admin\/sessions' : '\/calls'/);
-  assert.match(calls, /\/calls\/\$\{encodeURIComponent\(callId\)\}\/transcript-corrections/);
+  assert.match(calls, /\/admin\/sessions/);
+  assert.match(calls, /\/admin\/sessions\/\$\{encodeURIComponent\(callId\)\}\/transcript-corrections/);
+  assert.doesNotMatch(calls, /\/calls\/\$\{encodeURIComponent\(callId\)\}\/transcript-corrections/);
 });
 
 test('optional backend text-test bridge uses current REST text-turn contract', async () => {
@@ -53,6 +66,16 @@ test('optional backend text-test bridge uses current REST text-turn contract', a
   assert.match(bridge, /method: 'POST'/);
   assert.match(bridge, /\/sessions\/\$\{encodeURIComponent\(sessionId\)\}\/turns\/text/);
   assert.match(bridge, /body: \{ text: input.text \}/);
+  assert.match(bridge, /payload\.sources/);
   assert.doesNotMatch(bridge, /new WebSocket/);
   assert.match(chatService, /return sendBackendTextTest\(input\)/);
+});
+
+test('voice WS mock client drops stale generations', async () => {
+  const voiceWs = await read('src/features/voice/services/voiceWs.service.ts');
+  assert.match(voiceWs, /shouldDropTtsChunk/);
+  assert.match(voiceWs, /cancelledGenerations/);
+  assert.match(voiceWs, /\/ws\/sessions\//);
+  assert.match(voiceWs, /is_last_chunk/);
+  assert.match(voiceWs, /activeSources/);
 });

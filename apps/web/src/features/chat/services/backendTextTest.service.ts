@@ -4,6 +4,7 @@ import type { SourceCitation } from '../../../shared/types/api';
 import type { SendTextMessageInput, SendTextMessageResult } from './chat.service';
 
 let cachedSessionId: string | null = null;
+let cachedTenantId: string | null = null;
 
 type ApiTextTurnResponse = {
   answer_text?: unknown;
@@ -14,6 +15,9 @@ type ApiTextTurnResponse = {
   answer_status?: unknown;
   citations?: unknown;
   citation_ids?: unknown;
+  sources?: unknown;
+  fallback_reason?: unknown;
+  evidence_status?: unknown;
   result?: unknown;
   turn?: unknown;
   assistant_turn?: unknown;
@@ -36,22 +40,45 @@ function extractAnswer(payload: unknown): string | undefined {
   return undefined;
 }
 
+function mapSourceItem(item: unknown): SourceCitation | null {
+  if (!isRecord(item)) return null;
+  const id = item.chunk_id ?? item.id;
+  const url = item.canonical_url ?? item.source_url ?? item.url;
+  if (typeof id !== 'string' || typeof url !== 'string' || !id || !url) return null;
+  return {
+    id,
+    title: typeof item.title === 'string' && item.title ? item.title : id,
+    url,
+    ...(typeof item.excerpt === 'string' ? { excerpt: item.excerpt } : {}),
+  };
+}
+
 function extractCitations(payload: unknown): SourceCitation[] {
   if (!isRecord(payload)) return [];
+  if (Array.isArray(payload.sources)) {
+    const mapped = payload.sources.map(mapSourceItem).filter((item): item is SourceCitation => item !== null);
+    if (mapped.length) return mapped;
+  }
   const value = payload.citations;
   if (Array.isArray(value)) {
-    return value.filter((item): item is SourceCitation =>
-      isRecord(item)
-      && typeof item.id === 'string'
-      && typeof item.title === 'string'
-      && typeof item.url === 'string'
-    );
+    return value.map(mapSourceItem).filter((item): item is SourceCitation => item !== null);
   }
   for (const key of ['result', 'turn', 'assistant_turn', 'data']) {
     const nested = extractCitations(payload[key]);
     if (nested.length) return nested;
   }
   return [];
+}
+
+function extractStringField(payload: unknown, field: 'fallback_reason' | 'evidence_status'): string | undefined {
+  if (!isRecord(payload)) return undefined;
+  const value = payload[field];
+  if (typeof value === 'string' && value.trim()) return value;
+  for (const key of ['result', 'turn', 'assistant_turn', 'data']) {
+    const nested = extractStringField(payload[key], field);
+    if (nested) return nested;
+  }
+  return undefined;
 }
 
 function extractCitationIds(payload: unknown): string[] {
@@ -78,14 +105,21 @@ function extractAnswerStatus(payload: unknown): SendTextMessageResult['answer_st
   return undefined;
 }
 
-async function getSessionId(preferredSessionId?: string): Promise<string> {
+export function resetBackendTextSession(): void {
+  cachedSessionId = null;
+  cachedTenantId = null;
+}
+
+async function getSessionId(preferredSessionId?: string, tenantId?: string): Promise<string> {
   if (preferredSessionId) return preferredSessionId;
-  if (cachedSessionId) return cachedSessionId;
+  const resolvedTenant = tenantId || env.backendTestTenantId;
+  if (cachedSessionId && cachedTenantId === resolvedTenant) return cachedSessionId;
+  cachedSessionId = null;
 
   const created = await apiRequest<{ session_id?: unknown }>('/sessions', {
     method: 'POST',
     body: {
-      tenant_id: env.backendTestTenantId,
+      tenant_id: tenantId || env.backendTestTenantId,
       channel: 'mock',
       language: 'ru',
     },
@@ -95,6 +129,7 @@ async function getSessionId(preferredSessionId?: string): Promise<string> {
     throw new Error('Backend не вернул session_id при создании тестовой сессии.');
   }
   cachedSessionId = created.session_id;
+  cachedTenantId = resolvedTenant;
   return created.session_id;
 }
 
@@ -104,7 +139,7 @@ async function getSessionId(preferredSessionId?: string): Promise<string> {
  * This does not send microphone audio and does not represent real TTS playback.
  */
 export async function sendBackendTextTest(input: SendTextMessageInput): Promise<SendTextMessageResult> {
-  const sessionId = await getSessionId(input.sessionId || undefined);
+  const sessionId = await getSessionId(input.sessionId || undefined, input.tenantId);
   const raw = await apiRequest<ApiTextTurnResponse>(
     `/sessions/${encodeURIComponent(sessionId)}/turns/text`,
     {
@@ -123,5 +158,7 @@ export async function sendBackendTextTest(input: SendTextMessageInput): Promise<
     citation_ids: extractCitationIds(raw),
     citations: extractCitations(raw),
     answer_status: extractAnswerStatus(raw) ?? 'no_evidence',
+    fallback_reason: extractStringField(raw, 'fallback_reason'),
+    evidence_status: extractStringField(raw, 'evidence_status'),
   };
 }

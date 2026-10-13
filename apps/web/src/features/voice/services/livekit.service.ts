@@ -37,7 +37,7 @@ export class LiveKitVoiceClient {
       if (track.kind !== Track.Kind.Audio) return;
       const audioElement = track.attach();
       audioElement.autoplay = true;
-      audioElement.setAttribute('data-livekit-audio', track.sid);
+      audioElement.setAttribute('data-livekit-audio', track.sid ?? '');
       document.body.appendChild(audioElement);
       this.attachedAudio.add(audioElement);
     });

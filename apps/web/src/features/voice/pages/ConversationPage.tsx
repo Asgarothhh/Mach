@@ -62,7 +62,7 @@ export function ConversationPage() {
     <section className="conversation-page">
       <div className="conversation-page__topline">
         <Link to="/" className="text-link"><ArrowLeft size={15} /> Назад к темам</Link>
-        <div className="conversation-page__meta"><span>Тестовый входящий разговор · Browser WebRTC</span><StatusBadge tone={env.demoMode ? 'demo' : voice.isConnected ? 'success' : 'neutral'} dot>{env.demoMode ? 'Демо · синтетическая сессия' : voice.isConnected ? `Соединение активно · ${formatElapsed(voice.elapsedSeconds)}` : copy.pill}</StatusBadge></div>
+        <div className="conversation-page__meta"><span>{voice.channelLabel}</span><StatusBadge tone={env.demoMode ? 'demo' : voice.isConnected ? 'success' : 'neutral'} dot>{env.demoMode ? 'Демо · синтетическая сессия' : voice.isConnected ? `Соединение активно · ${formatElapsed(voice.elapsedSeconds)}` : copy.pill}</StatusBadge></div>
       </div>
       {voice.notice && !env.demoMode && <div className="inline-alert inline-alert--warning" role="status">{voice.notice}</div>}
       <div className="conversation-layout">
@@ -106,7 +106,7 @@ export function ConversationPage() {
             <small>Новая реплика появится здесь после завершения распознавания.</small>
           </section>
           {(state === 'speaking' || shownSources.length > 0) && <section className="sources-panel"><h2>Проверить самостоятельно</h2><p className="muted-copy">Синтетические источники текущего demo tenant</p><strong className="source-count">Источники · {shownSources.length}</strong><div className="source-stack">{shownSources.map((source) => <SourceCard key={source.id} source={source} compact />)}</div><small>Дата и ревизии в демо — примеры, не результат реального индексирования.</small></section>}
-          <section className="scope-note"><strong>Тестовый режим браузера</strong><p>Этот экран проверяет микрофон и WebRTC. Он не доказывает подключение SIP/VoIP. Агент не должен обещать отправку сообщения или перевод человеку без подтверждения соответствующего adapter.</p></section>
+          <section className="scope-note"><strong>Browser test channel / mock — не телефония</strong><p>Этот экран отправляет PCM16 на WS /api/v1/ws/sessions. Он не доказывает подключение SIP/VoIP и не использует LiveKit, пока VITE_LIVEKIT_URL пуст.</p></section>
         </aside>
       </div>
     </section>

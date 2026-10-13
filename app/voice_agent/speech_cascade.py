@@ -24,7 +24,6 @@ import time
 from collections import deque
 from collections.abc import AsyncIterator, Awaitable, Callable
 
-from app.voice_agent.asr import get_recognizer
 from speech.audio import pcm16_to_float32
 from speech.contracts import (
     ASREvent,
@@ -34,7 +33,7 @@ from speech.contracts import (
     VADEvent,
     VADEventType,
 )
-from speech.vad import SileroVADAdapter, VADConfig
+from speech.vad.silero_vad import SileroVADAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -61,13 +60,17 @@ class SpeechCascade:
         self.session_id = session_id
         self._on_vad = on_vad
         self._on_asr = on_asr
-        self._vad = vad_adapter or SileroVADAdapter.from_pretrained(
-            # 400 ms of left context: VAD onset lags on plosive/fricative word
-            # starts ("Подс-") — the ASR needs the full word, and every ms missed
-            # at the start costs accuracy (measured on synth_01: 96 ms padding
-            # -> "кдите", 400 ms -> "подскажите").
-            VADConfig(sample_rate=SAMPLE_RATE, prefix_padding_ms=400)
-        )
+        if vad_adapter is None:
+            raise SpeechError(
+                ErrorCode.MODEL_UNAVAILABLE,
+                "vad_adapter is required; use app.voice_agent.factory.build_cascade",
+            )
+        if recognizer is None:
+            raise SpeechError(
+                ErrorCode.MODEL_UNAVAILABLE,
+                "recognizer is required; use app.voice_agent.factory.build_cascade",
+            )
+        self._vad = vad_adapter
         self._recognizer = recognizer
         self._queue: asyncio.Queue[AudioFrame | None] = asyncio.Queue()
         self._task = asyncio.create_task(self._run())
@@ -200,7 +203,7 @@ class SpeechCascade:
             await self._recognize(segment, end_ms=event.timestamp_ms)
 
     async def _recognize(self, segment: bytes, *, end_ms: int) -> None:
-        recognizer = self._recognizer or get_recognizer()
+        recognizer = self._recognizer
         samples = pcm16_to_float32(segment)
         try:
             text = await asyncio.to_thread(

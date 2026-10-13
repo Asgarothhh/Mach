@@ -23,10 +23,10 @@ LLM_MODEL = "meta-llama/llama-3-8b-instruct"
 def _force_mock_and_limiter(monkeypatch):
     from app.api import main
 
-    # Детерминированный дубль TTS для юнит-тестов (без весов модели):
-    # транспортный контракт стрима по-прежнему проверяется через
-    # app.orchestrator.tts_stream (VOICE_TTS_MODE=real — только демо/рантайм).
-    monkeypatch.setenv("VOICE_TTS_MODE", "off")
+    # Mock speech path (PCM tone TTS, energy VAD, scripted ASR). Live weights
+    # stay behind VOICE_ASR_MODE=live / VOICE_TTS_MODE=real.
+    monkeypatch.setenv("VOICE_TTS_MODE", "mock")
+    monkeypatch.setenv("VOICE_ASR_MODE", "mock")
     main.llm_adapter.is_mock = True
     main.limiter.reset()
     yield

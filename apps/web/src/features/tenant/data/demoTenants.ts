@@ -2,8 +2,8 @@ import type { TenantProfile } from '../../../shared/types/track1';
 
 /** Synthetic tenant seed. This fixture never authenticates a user or grants access. */
 export const defaultDemoTenant: TenantProfile = {
-  tenant_id: 'demo-business-01',
-  display_name: 'Демо-компания',
+  tenant_id: 'acme-it-demo',
+  display_name: 'Acme IT (demo)',
   status: 'active',
   created_at: '2026-10-13T08:30:00+03:00',
   settings_revision: 'tenant-config-r3',
@@ -20,7 +20,24 @@ export const defaultDemoTenant: TenantProfile = {
   consent_notice_version: 'notice-r1',
 };
 
-const demoTenants = new Map<string, TenantProfile>([[defaultDemoTenant.tenant_id, defaultDemoTenant]]);
+const mtsPublicDemoTenant: TenantProfile = {
+  ...defaultDemoTenant,
+  tenant_id: 'mts-public-demo',
+  display_name: 'MTS public (demo)',
+  greeting: 'Здравствуйте! Это демо-корпус публичных материалов МТС.',
+};
+
+const fixtureOnlyTenant: TenantProfile = {
+  ...defaultDemoTenant,
+  tenant_id: 'demo-business-01',
+  display_name: 'Демо-компания (fixtures)',
+};
+
+const demoTenants = new Map<string, TenantProfile>([
+  [defaultDemoTenant.tenant_id, defaultDemoTenant],
+  [mtsPublicDemoTenant.tenant_id, mtsPublicDemoTenant],
+  [fixtureOnlyTenant.tenant_id, fixtureOnlyTenant],
+]);
 
 export function listDemoTenants(): TenantProfile[] {
   return [...demoTenants.values()].map((tenant) => ({ ...tenant }));

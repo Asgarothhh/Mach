@@ -22,7 +22,6 @@ from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
 
 from app.schemas.events import TTSChunkEvent
-from app.voice_agent.tts import get_tts_adapter
 from speech.contracts import CancellationToken, ErrorCode, SpeechError, TTSRequest
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -75,7 +74,9 @@ class TTSSentenceStreamer:
         if self._turn_context.is_cancelled:
             return
         try:
-            adapter = get_tts_adapter()
+            from app.voice_agent.factory import get_tts_adapter_for_mode
+
+            adapter = get_tts_adapter_for_mode()
         except SpeechError:
             # Text-mode degradation: the caller shows fallback_text.
             yield self._event(pcm=b"", is_last=False, fallback_text=text, text=text)
@@ -91,7 +92,8 @@ class TTSSentenceStreamer:
         try:
             async for chunk in adapter.synthesize(request, token):
                 if self._turn_context.is_cancelled:
-                    token.cancel()  # stops further chunks of this generation
+                    token.cancel()
+                    return
                 yield self._event(
                     pcm=chunk.pcm_s16le,
                     is_last=False,

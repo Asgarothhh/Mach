@@ -213,10 +213,17 @@ def test_ws_bound_session_yields_tts(api_client):
                 },
             }
         )
-        message = websocket.receive_json()
-        assert message["type"] == "TTSChunkEvent"
-        assert message["payload"]["is_last_chunk"] is True
-        assert message["payload"]["audio_base64"]
+        chunks = []
+        while True:
+            message = websocket.receive_json()
+            assert message["type"] == "TTSChunkEvent"
+            chunks.append(message["payload"])
+            if message["payload"]["is_last_chunk"] is True:
+                break
+        assert chunks
+        assert any(item["audio_base64"] for item in chunks)
+        assert chunks[0]["generation_id"] == chunks[0]["turn_id"]
+        assert chunks[0]["sample_rate"]
 
 
 def test_ws_unknown_session_closed(api_client):
@@ -235,6 +242,7 @@ def test_ready_200_without_openrouter_key(api_client, monkeypatch):
     body = response.json()
     assert body["status"] == "ready"
     assert body["checks"]["retriever"] == "ok"
+    assert body["checks"]["voice"] == "mock"
     assert "openrouter" not in body["checks"]
 
 

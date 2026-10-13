@@ -29,9 +29,13 @@ export const env = {
   appName: import.meta.env.VITE_APP_NAME?.trim() || 'MTS Voice Assistant',
   demoMode: readBoolean(import.meta.env.VITE_DEMO_MODE, true),
   backendTextTest: readBoolean(import.meta.env.VITE_BACKEND_TEXT_TEST, false),
-  backendTestTenantId: import.meta.env.VITE_BACKEND_TEST_TENANT_ID?.trim() || 'demo-business-01',
+  backendAdminSessions: readBoolean(import.meta.env.VITE_BACKEND_ADMIN_SESSIONS, false),
+  backendTestTenantId: import.meta.env.VITE_BACKEND_TEST_TENANT_ID?.trim() || 'acme-it-demo',
   apiBaseUrl: normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL),
   liveKitUrl: import.meta.env.VITE_LIVEKIT_URL?.trim() || '',
 } as const;
 
 export const liveVoiceConfigured = !env.demoMode && env.liveKitUrl.length > 0;
+export const wsVoiceConfigured = !env.demoMode && env.liveKitUrl.length === 0;
+
+export const LIVE_DEMO_TENANTS = ['acme-it-demo', 'mts-public-demo'] as const;
