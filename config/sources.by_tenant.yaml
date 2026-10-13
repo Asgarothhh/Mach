@@ -1,0 +1,88 @@
+# Business tenant source registry (SSOT §6.1). Loaded with RegistryPurpose.BUSINESS.
+# The legacy MTS demo corpus must never appear here: see legacy_demo_sources.mts.by.yaml.
+# acme-it-demo is synthetic; .example hosts never resolve (RFC 2606).
+schema_version: 1
+tenants:
+  - tenant_id: acme-it-demo
+    registry_version: 1
+    display_name: "Acme IT (synthetic demo tenant)"
+    updated_at: "2026-10-13T10:00:00Z"
+    allowed_hosts:
+      - www.acme-it.example
+    manual_exclusions:
+      - exclusion_id: mx-001
+        match: prefix
+        url: https://www.acme-it.example/help/archive/
+        reason: "Promotions archive 2024 — outdated, excluded by owner"
+        created_by: role.business-owner
+        created_at: "2026-10-12T08:00:00Z"
+    sources:
+      - source_id: acme-help
+        tenant_id: acme-it-demo
+        url: https://www.acme-it.example/help/
+        kind: web_section
+        priority: P0
+        allow_path_prefixes: [/help]
+        deny_path_prefixes: [/help/internal]
+        refresh_interval: P1D
+        freshness_class: service_page
+        language: ru
+        audience: caller
+        status: active
+        owner: role.business-owner
+        approval:
+          status: approved
+          approved_by: role.business-owner
+          approved_at: "2026-10-12T09:00:00Z"
+        notes: "Help centre and FAQ: services, opening hours, request conditions"
+
+      - source_id: acme-price-list
+        tenant_id: acme-it-demo
+        url: https://www.acme-it.example/docs/price-list-2026.pdf
+        kind: document
+        priority: P0
+        allow_path_prefixes: [/docs/price-list-2026.pdf]
+        refresh_interval: PT6H
+        freshness_class: dynamic_conditions
+        language: ru
+        audience: caller
+        status: active
+        owner: role.business-owner
+        approval:
+          status: approved
+          approved_by: role.business-owner
+          approved_at: "2026-10-12T09:00:00Z"
+        notes: "Current price list; prices change, refresh every 6 hours (SSOT §6.3)"
+
+      - source_id: acme-contacts
+        tenant_id: acme-it-demo
+        url: https://www.acme-it.example/contacts/
+        kind: web_page
+        priority: P0
+        allow_path_prefixes: [/contacts]
+        refresh_interval: PT6H
+        freshness_class: dynamic_conditions
+        language: ru
+        audience: caller
+        status: active
+        owner: role.business-owner
+        approval:
+          status: approved
+          approved_by: role.business-owner
+          approved_at: "2026-10-12T09:00:00Z"
+        notes: "Contacts and escalation channels (SSOT §6.1)"
+
+      - source_id: acme-login
+        tenant_id: acme-it-demo
+        url: https://www.acme-it.example/login
+        kind: web_page
+        priority: P2
+        allow_path_prefixes: [/login]
+        refresh_interval: P7D
+        language: ru
+        audience: caller
+        status: excluded
+        exclusion_reason: "auth_area: SSOT §6.2.3"
+        owner: role.business-owner
+        approval:
+          status: rejected
