@@ -1,0 +1,116 @@
+version: '3.8'
+
+volumes:
+  pg_data:
+  redis_data:
+  qdrant_data:
+  prom_data:
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    profiles: ["demo"]
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    restart: unless-stopped
+    command: >
+      sh -c "alembic upgrade head && 
+             uvicorn app.api.main:app --host 0.0.0.0 --port 8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  voice_agent:
+    build:
+      context: .
+      dockerfile: apps/voice_agent/Dockerfile
+    profiles: ["demo"]
+    env_file:
+      - .env
+    restart: unless-stopped
+    depends_on:
+      - api
+      - redis
+
+  ingestion:
+    build:
+      context: .
+      dockerfile: apps/ingestion/Dockerfile
+    profiles: ["demo"]
+    env_file:
+      - .env
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - qdrant
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    profiles: ["demo"]
+    ports:
+      - "3000:80"
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15-alpine
+    profiles: ["demo"]
+    environment:
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=123789
+      - POSTGRES_DB=voice_agent
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d voice_agent"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    profiles: ["demo"]
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  qdrant:
+    image: qdrant/qdrant:v1.6.1
+    profiles: ["demo"]
+    volumes:
+      - qdrant_data:/qdrant/storage
+    ports:
+      - "6333:6333"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:6333/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  prometheus:
+    image: prom/prometheus:v2.45.0
+    profiles: ["demo"]
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prom_data:/prometheus
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
