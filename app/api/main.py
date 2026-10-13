@@ -20,6 +20,8 @@ from app.security.guardrails import GuardrailsService
 from app.security.telemetry import get_logger
 from app.rag.retriever import MockKnowledgeRetriever
 
+from prometheus_client import make_asgi_app
+
 # Импорт зависимостей базы данных и роутеров
 from app.api.deps import AsyncSessionLocal
 from app.api.admin import router as admin_router
@@ -40,6 +42,15 @@ app.add_middleware(
 
 # Подключение административных эндпоинтов
 app.include_router(admin_router)
+
+# Экспорт метрик Prometheus
+metrics_app = make_asgi_app()
+app.mount("/metrics", metrics_app)
+
+# Инициализация синглтонов сервисов
+session_manager = SessionManager()
+guardrails = GuardrailsService()
+retriever = MockKnowledgeRetriever()
 
 # Инициализация синглтонов сервисов
 session_manager = SessionManager()
