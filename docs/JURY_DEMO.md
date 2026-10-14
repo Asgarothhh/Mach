@@ -35,7 +35,7 @@ docker compose --profile demo up --build -d
 
 Сервисы: `postgres`, `redis`, `qdrant`, `prometheus`, `api`, `voice_agent`, `web`, `ingestion`.
 
-`ingestion` не обходит сайт. Речь в compose по умолчанию **mock**. Живой голос — host-процессы, §2.3.
+`ingestion` не обходит сайт. Речь в compose — **live** (T-one + Silero); веса скачиваются при `docker compose ... --build`, не при старте контейнера. Первая сборка долгая.
 
 Остановка без удаления данных: `docker compose --profile demo down`. `down -v` стирает БД и индекс — только с явного разрешения.
 
@@ -48,7 +48,7 @@ curl -sS http://localhost:8000/health/ready
 # llm.provider = openrouter | mock; llm.model_id = google/gemma-4-26b-a4b-it
 
 curl -sS http://localhost:8100/health/ready
-# compose: asr/tts = mock; livekit = not_configured
+# compose: asr/tts = ok; livekit = not_configured
 ```
 
 Smoke-текст:
@@ -76,13 +76,11 @@ docker compose --profile demo up -d --build web
 
 За прокси uvicorn нужен `--proxy-headers --forwarded-allow-ips=<адрес Caddy>`. Иначе лимит 10/60 запросов в минуту общий на IP прокси.
 
-### 2.3. Живой голос (opt-in, не compose)
+### 2.3. Живой голос
 
-Compose `api`/`voice_agent` занимают `:8000`/`:8100`. Для live: `docker compose --profile demo stop api voice_agent` (**не** `down -v`), Postgres/Qdrant/Redis оставить. Дальше — [`runbook.md`](runbook.md) §5–§6 (conda `mach`, T-one + Silero `ru_bogdan`).
+Compose `api` уже live. Проверка: `:8000/health/ready` → `voice=live`; `:8100/health/ready` → `asr=ok`, `tts=ok`. Баннер «не телефония» про SIP, не про ASR.
 
-Проверка: `:8000/health/ready` → `voice=live`; `:8100/health/ready` → `asr=ok`, `tts=ok`. Баннер «не телефония» про SIP, не про mock ASR.
-
-Dense RAG (не обязателен для показа): `scripts/fetch_models.py bge-m3-onnx`. Без весов стенд остаётся sparse-only — для demo-чанков этого достаточно.
+Host-uvicorn вместо контейнера — [`runbook.md`](runbook.md) §6. Dense BGE-M3 входит в образ; на хосте те же файлы качает `scripts/fetch_models.py`.
 
 ## 3. За 10 минут до жюри
 

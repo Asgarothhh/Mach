@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib.util
 import sys
 
 import pytest
@@ -61,14 +60,44 @@ def test_live_status_does_not_instantiate_engines(monkeypatch):
     assert "onnx_asr" not in sys.modules
 
 
-@pytest.mark.skipif(
-    importlib.util.find_spec("silero_vad") is not None,
-    reason="live Silero VAD is installed in this environment",
-)
+def test_build_cascade_raises_when_live_fails(monkeypatch):
+    monkeypatch.setenv("VOICE_ASR_MODE", "live")
+    from app.voice_agent import factory
+    from app.voice_agent.factory import reset_live_vad_for_tests
+
+    def boom(config=None):
+        raise SpeechError(ErrorCode.MODEL_UNAVAILABLE, "no weights")
+
+    monkeypatch.setattr("speech.vad.silero_vad.SileroVADAdapter.from_pretrained", boom)
+    reset_live_vad_for_tests()
+    with pytest.raises(SpeechError) as excinfo:
+        factory.build_cascade("s1", on_vad=lambda _: None, on_asr=lambda _: None)
+    assert excinfo.value.code is ErrorCode.MODEL_UNAVAILABLE
+
+
+def test_live_tts_missing_model_raises(monkeypatch):
+    monkeypatch.setenv("VOICE_TTS_MODE", "real")
+    from app.voice_agent import factory
+
+    def boom():
+        raise SpeechError(ErrorCode.MODEL_UNAVAILABLE, "no tts weights")
+
+    monkeypatch.setattr("app.voice_agent.tts.get_tts_adapter", boom)
+    with pytest.raises(SpeechError) as excinfo:
+        factory.get_tts_adapter_for_mode()
+    assert excinfo.value.code is ErrorCode.MODEL_UNAVAILABLE
+
+
 def test_live_missing_model_raises(monkeypatch):
     monkeypatch.setenv("VOICE_ASR_MODE", "live")
     from app.voice_agent import factory
+    from app.voice_agent.factory import reset_live_vad_for_tests
 
+    def boom(config=None):
+        raise SpeechError(ErrorCode.MODEL_UNAVAILABLE, "no weights")
+
+    monkeypatch.setattr("speech.vad.silero_vad.SileroVADAdapter.from_pretrained", boom)
+    reset_live_vad_for_tests()
     with pytest.raises(SpeechError) as excinfo:
         factory.build_vad()
     assert excinfo.value.code is ErrorCode.MODEL_UNAVAILABLE

@@ -16,18 +16,19 @@ cp .env.example .env
 
 Существующий volume `pg_data` применяет пароль Postgres **только при первом создании**. Смена пароля без `docker compose down -v` не сработает; `down -v` удаляет демо-данные и требует явного разрешения.
 
-## 2. Запуск стенда (CPU, mock ASR/TTS)
+## 2. Запуск стенда (CPU, live ASR/TTS)
+
+Первая сборка `api` скачивает веса в образ: Silero TTS `v5_cis_base_nostress`, T-one, Silero VAD, silero-stress, BGE-M3 ONNX. Это несколько гигабайт и может занять 10–20 минут. Повторный `--build` использует слой Docker, пока не меняются `Dockerfile` / `scripts/fetch_models.py` / `scripts/prefetch_runtime_weights.py`.
 
 ```bash
 docker compose --profile demo up --build -d
 ```
 
 Сервисы: `postgres`, `redis`, `qdrant`, `prometheus`, `api`, `voice_agent`, `web`, `ingestion`.
-Compose задаёт `QDRANT_URL=http://qdrant:6333` для `api` — после seed RAG работает как hybrid
-(или sparse-only без весов BGE-M3). Юнит-тесты снимают `QDRANT_URL` и остаются на lexical stub.
+Compose задаёт `QDRANT_URL=http://qdrant:6333` для `api` — после seed RAG hybrid (dense BGE-M3 уже в образе). Юнит-тесты снимают `QDRANT_URL` и остаются на lexical stub.
 `ingestion` **не** обходит mts.by.
 
-Переменные речи по умолчанию: `VOICE_ASR_MODE=mock`, `VOICE_TTS_MODE=mock`. Веса моделей **не** скачиваются при `up`.
+Контейнеры `api` и `voice_agent` **принудительно** `VOICE_ASR_MODE=live` / `VOICE_TTS_MODE=real` (общий образ `mach-api:demo`). Хостовый `.env` с `mock` на контейнеры не действует. При старте разговора агент представляется как **Куби**.
 
 Остановка без удаления данных:
 
@@ -41,7 +42,7 @@ docker compose --profile demo down
 curl -sS http://localhost:8000/health/live
 curl -sS http://localhost:8000/health/ready   # retriever обязателен; OpenRouter нет
 curl -sS http://localhost:8100/health/live
-curl -sS http://localhost:8100/health/ready   # asr/tts = mock; livekit = not_configured
+curl -sS http://localhost:8100/health/ready   # asr/tts = ok; livekit = not_configured
 ```
 
 Текстовый путь (оба demo-tenant):
@@ -116,9 +117,9 @@ docker compose --profile demo up -d --build web
 
 Тот же override добавляет рабочий healthcheck для qdrant: в образе `qdrant/qdrant` нет `wget`, поэтому проверка из main (`wget -qO- .../healthz`) не может пройти, и контейнер вечно «unhealthy». Override проверяет тот же эндпоинт через `bash` + `/dev/tcp`.
 
-## 5. Модели (opt-in, не при compose up)
+## 5. Модели (скачиваются при сборке образа)
 
-Compose demo profile остаётся **mock** для речи. Live ASR/TTS — только host-процессы в conda env `mach` + extras. Веса **не** скачиваются при `compose up`. RAG: Qdrant v1.7.4 + seed demo-чанков; dense BGE-M3 только если `models/rag/bge-m3-onnx` смонтирован. LiveKit/SIP не настроены. T-one и Silero VAD качаются при **первой live-загрузке**, не при старте compose.
+Compose `api`/`voice_agent` собираются из `apps/api/Dockerfile`: `pip` extras + `scripts/fetch_models.py` + `scripts/prefetch_runtime_weights.py`. Веса **не** качаются при старте контейнера. Host conda-путь ниже — только если uvicorn запускаете на машине, не в compose.
 
 ```bash
 # CPU torch first so extras do not pull CUDA
@@ -126,14 +127,18 @@ conda run -n mach pip install torch --index-url https://download.pytorch.org/whl
 conda run -n mach pip install -e ".[vad,asr,tts,tts-stress]"
 conda run -n mach pip install soxr soundfile
 conda run -n mach python scripts/fetch_models.py silero-tts-v5_cis_base_nostress --output-dir models/tts
+conda run -n mach python scripts/fetch_models.py bge-m3-onnx --output-dir models/rag
+conda run -n mach python scripts/fetch_models.py bge-m3-onnx-data --output-dir models/rag
+conda run -n mach python scripts/fetch_models.py bge-m3-onnx-tokenizer --output-dir models/rag
+conda run -n mach python scripts/prefetch_runtime_weights.py
 conda run -n mach python scripts/fetch_asr_testset.py --synthetic-only --out artifacts/asr_benchmark
 ```
 
-Default live TTS — MIT shortlist Silero `v5_cis_base_nostress` / `ru_bogdan`. Голоса Silero `v5_5_ru` (CC BY-NC-SA) **не** default demo.
+Default live TTS — MIT shortlist Silero `v5_cis_base_nostress` / `ru_bogdan`. Голоса Silero `v5_5_ru` (CC BY-NC-SA) **не** default demo. LiveKit/SIP не настроены.
 
-## 6. Live каскад на хосте (conda `mach`)
+## 6. Live каскад на хосте (conda `mach`, opt-in)
 
-Compose `api`/`voice_agent` занимают `:8000`/`:8100` — остановите их (`docker compose --profile demo stop api voice_agent`), **не** `down -v`. Postgres (и redis) оставьте.
+Compose уже отдаёт live речь на `:8000`. Этот раздел — только если нужен host-uvicorn рядом с conda env `mach`. Тогда остановите контейнеры `api`/`voice_agent` (`docker compose --profile demo stop api voice_agent`), **не** `down -v`. Postgres (и redis) оставьте.
 
 Миграции с хоста (override, чтобы `load_dotenv` не подставил hostname `postgres`):
 
@@ -188,11 +193,11 @@ Seed (фон, backoff 1s→30s) публикует `acme-it-demo` и `mts-public
 `kb__{tenant}__{DEMO_INDEX_REVISION}.{fp12}` и атомарно ставит alias `…__active`.
 Повторный старт с тем же fingerprint — upsert тех же point id, без delete.
 
-Веса BGE-M3 **не** скачиваются. Чтобы включить dense:
+Веса BGE-M3 кладутся в образ при сборке (`models/rag/bge-m3-onnx/`). Для host-uvicorn те же файлы:
 
 ```bash
-# записи есть в scripts/fetch_models.py — запускайте явно, не из compose up
 conda run -n mach python scripts/fetch_models.py bge-m3-onnx --output-dir models/rag
+conda run -n mach python scripts/fetch_models.py bge-m3-onnx-data --output-dir models/rag
 conda run -n mach python scripts/fetch_models.py bge-m3-onnx-tokenizer --output-dir models/rag
 ```
 

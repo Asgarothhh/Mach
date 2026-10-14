@@ -54,6 +54,15 @@ export function useVoiceSession({ onTranscript }: Options) {
         createdSessionId = session.session_id;
         setSessionId(session.session_id);
         setSessionTenantId(tenantId);
+        if (session.opening_greeting) {
+          onTranscriptRef.current({
+            id: `${session.session_id}:opening`,
+            text: session.opening_greeting,
+            final: true,
+            role: 'assistant',
+            turnId: `${session.session_id}:opening`,
+          });
+        }
         if (!session.token) {
           throw new Error('Не удалось подключить голос. Попробуйте ещё раз или напишите текстом.');
         }
@@ -87,10 +96,19 @@ export function useVoiceSession({ onTranscript }: Options) {
     try {
       const session = await createVoiceSession(tenantId);
       createdSessionId = session.session_id;
-      setSessionId(session.session_id);
-      setSessionTenantId(tenantId);
-      setState('connecting');
-      const client = new VoiceWsClient({
+        setSessionId(session.session_id);
+        setSessionTenantId(tenantId);
+        if (session.opening_greeting) {
+          onTranscriptRef.current({
+            id: `${session.session_id}:opening`,
+            text: session.opening_greeting,
+            final: true,
+            role: 'assistant',
+            turnId: `${session.session_id}:opening`,
+          });
+        }
+        setState('connecting');
+        const client = new VoiceWsClient({
         onState: setState,
         onTranscript: (event) => onTranscriptRef.current(event),
         onError: setNotice,

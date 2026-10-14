@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { ArrowRight, Info, Mic, Send } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { MessageBubble } from '../../../shared/components/MessageBubble';
@@ -32,6 +32,15 @@ export function TextModePage() {
   const tenantAtSend = useRef(tenantId);
   const navigate = useNavigate();
   const reusableSessionId = voice.sessionId && voice.sessionTenantId === tenantId ? voice.sessionId : '';
+
+  useEffect(() => {
+    if (conversation.messages.length) return;
+    conversation.addMessage(
+      'assistant',
+      'Здравствуйте! Я Куби — виртуальный ИИ-ассистент, не человек. Отвечаю по официальным данным компании. Чем могу помочь?',
+      env.demoMode && !env.backendTextTest ? 'demo' : 'live',
+    );
+  }, [conversation, conversation.messages.length]);
 
   async function submit(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault();

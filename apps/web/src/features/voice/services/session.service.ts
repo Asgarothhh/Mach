@@ -26,6 +26,9 @@ export async function createVoiceSession(tenantId?: string): Promise<CreateSessi
   return {
     session_id: sessionId,
     ...(typeof tokenValue === 'string' && tokenValue ? { token: tokenValue } : {}),
+    ...(typeof raw.opening_greeting === 'string' && raw.opening_greeting
+      ? { opening_greeting: raw.opening_greeting }
+      : {}),
   };
 }
 

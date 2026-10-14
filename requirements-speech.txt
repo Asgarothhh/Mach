@@ -1,0 +1,6 @@
+# Installed only in apps/api/Dockerfile (and the shared voice-agent image).
+# Keep torch out of requirements.txt / requirements-rag.txt — tests/test_no_heavy_deps.py.
+# Dockerfile installs CPU torch from download.pytorch.org before this file.
+silero-vad>=5.1
+onnx-asr[cpu,hub]>=0.12
+silero-stress

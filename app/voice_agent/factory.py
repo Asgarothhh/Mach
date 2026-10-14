@@ -1,7 +1,8 @@
 """Runtime selection of VAD/ASR/TTS adapters (mock vs live).
 
-Default is mock so the API process starts without torch, onnx-asr, or weights.
-Live mode is opt-in via ``VOICE_ASR_MODE=live`` / ``VOICE_TTS_MODE=real``.
+Default is mock so unit tests and a bare host process start without torch.
+Compose and the API image pin ``VOICE_ASR_MODE=live`` / ``VOICE_TTS_MODE=real``
+after baking weights at image build. Live mode does not fall back to mocks.
 """
 
 from __future__ import annotations
@@ -130,14 +131,14 @@ def build_cascade(session_id: str, *, on_vad, on_asr):
         )
     except SpeechError:
         raise
-    except Exception as exc:  # noqa: BLE001 - WS must stay up
+    except Exception as exc:  # noqa: BLE001 - WS must stay typed
         raise SpeechError(
             ErrorCode.MODEL_UNAVAILABLE, f"speech cascade unavailable: {exc}"
         ) from exc
 
 
 def warmup_live_adapters() -> dict[str, str]:
-    """Best-effort probe used by the voice-agent health worker."""
+    """Best-effort probe used by the voice-agent health worker and API lifespan."""
     checks = {"asr": "unavailable", "tts": "unavailable"}
     if asr_mode() == "mock":
         checks["asr"] = "mock"

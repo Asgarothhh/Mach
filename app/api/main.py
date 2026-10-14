@@ -21,11 +21,13 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from app.api.admin import router as admin_router
+from app.assistant_identity import OPENING_GREETING
 from app.api.deps import AsyncSessionLocal
 from app.models.store import SqlAlchemyTurnStore, TurnStore
 from app.orchestrator.dialog_flow import (
     DEFAULT_LLM_MODEL_ID,
     DialogOrchestrator,
+    TurnOutcome,
     UnknownSessionError,
     resolve_llm_model_id,
 )
@@ -43,7 +45,7 @@ from app.schemas.api import (
 from app.schemas.events import ASREvent, VADEvent
 from app.security.guardrails import GuardrailsService
 from app.security.telemetry import get_logger
-from app.voice_agent.factory import build_cascade, voice_pipeline_status
+from app.voice_agent.factory import build_cascade, voice_pipeline_status, warmup_live_adapters
 from speech.contracts import (
     ASREvent as SpeechASREvent,
     SpeechError as SpeechPipelineError,
@@ -115,6 +117,11 @@ async def lifespan(app: FastAPI):
             await store.ensure_tenants(runtime.tenants)
         except Exception as exc:  # noqa: BLE001 - best-effort startup, never swallow BaseException
             logger.error("ensure_tenants_failed", error_class=exc.__class__.__name__)
+        try:
+            speech = warmup_live_adapters()
+            logger.info("speech_warmup", asr=speech["asr"], tts=speech["tts"])
+        except Exception as exc:  # noqa: BLE001 - text path must still start
+            logger.error("speech_warmup_failed", error_class=exc.__class__.__name__)
         yield
     finally:
         await runtime.close()
@@ -202,7 +209,8 @@ async def create_session(request: Request, req: SessionCreateRequest):
     return SessionResponse(
         session_id=session_id,
         status=SessionState.CREATED,
-        created_at=datetime.now(UTC)
+        created_at=datetime.now(UTC),
+        opening_greeting=OPENING_GREETING,
     )
 
 
@@ -247,6 +255,53 @@ async def end_session(session_id: str):
     if not await _close_session(session_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
     return {"message": "Session terminated"}
+
+
+async def _send_opening_greeting(websocket: WebSocket, session_id: str) -> None:
+    """Disclose that the speaker is the AI assistant Kubi before the first user turn."""
+    binding = session_manager.get_binding(session_id)
+    turn_id = f"{session_id}:opening"
+    outcome = TurnOutcome(
+        session_id=session_id,
+        turn_id=turn_id,
+        answer_text=OPENING_GREETING,
+        answer_status="grounded",
+        tenant_id=getattr(binding, "tenant_id", None),
+    )
+    try:
+        await _safe_send_json(websocket, {
+            "type": "AnswerEvent",
+            "payload": {
+                "session_id": session_id,
+                "turn_id": turn_id,
+                "timestamp_ms": 0,
+                "answer_text": OPENING_GREETING,
+                "answer_status": "grounded",
+                "citation_ids": [],
+                "sources": [],
+            },
+        })
+        stream = dialog_orchestrator.stream_tts_for_outcome(session_id, outcome)
+        try:
+            async for tts_event in stream:
+                context = session_manager.active_turns.get(session_id)
+                if context is not None and context.is_cancelled:
+                    break
+                await websocket.send_json({
+                    "type": "TTSChunkEvent",
+                    "payload": tts_event.model_dump(),
+                })
+                if tts_event.audio_base64 and not tts_event.is_last_chunk:
+                    pcm_bytes = len(tts_event.audio_base64) * 3 // 4
+                    sample_rate = tts_event.sample_rate or 24000
+                    audio_seconds = pcm_bytes / 2 / sample_rate
+                    await asyncio.sleep(max(0.0, min(audio_seconds, 2.0)))
+        finally:
+            await stream.aclose()
+    except asyncio.CancelledError:
+        logger.info("opening_greeting_cancelled", session_id=session_id)
+    except Exception as exc:  # noqa: BLE001 - greeting must not kill the socket
+        logger.error("opening_greeting_failed", error_class=exc.__class__.__name__, session_id=session_id)
 
 
 async def send_tts_stream(websocket: WebSocket, session_id: str, asr_text: str):
@@ -437,6 +492,11 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             error_class=exc.__class__.__name__,
         )
         await _notify_speech_error("model_unavailable")
+
+    if speech is not None:
+        generation_task = asyncio.create_task(
+            _send_opening_greeting(websocket, session_id)
+        )
 
     try:
         while True:

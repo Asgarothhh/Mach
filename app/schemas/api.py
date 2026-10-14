@@ -2,6 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.assistant_identity import OPENING_GREETING
 from app.orchestrator.state_machine import SessionState
 
 
@@ -23,6 +24,7 @@ class SessionResponse(BaseModel):
     session_id: str
     status: SessionState
     created_at: datetime
+    opening_greeting: str = OPENING_GREETING
 
 
 class AdminSessionSummary(BaseModel):

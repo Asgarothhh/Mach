@@ -31,17 +31,24 @@ def _frame(amplitude: float) -> bytes:
     return float32_to_pcm16(samples)
 
 
+def _is_opening(message: dict) -> bool:
+    turn_id = str(message.get("payload", {}).get("turn_id") or "")
+    return turn_id.endswith(":opening")
+
+
 def _next_tts(websocket) -> dict:
     while True:
         message = websocket.receive_json()
-        if message["type"] == "TTSChunkEvent":
+        if message["type"] == "TTSChunkEvent" and not _is_opening(message):
             return message
 
 
-def _drain_tts(websocket, *, limit: int = 20) -> list[dict]:
+def _drain_tts(websocket, *, limit: int = 40) -> list[dict]:
     chunks = []
     for _ in range(limit):
         message = websocket.receive_json()
+        if _is_opening(message):
+            continue
         if message["type"] != "TTSChunkEvent":
             chunks.append(message)
             continue
@@ -49,6 +56,26 @@ def _drain_tts(websocket, *, limit: int = 20) -> list[dict]:
         if message["payload"].get("is_last_chunk"):
             break
     return chunks
+
+
+def test_websocket_opens_with_kubi_greeting(api_client):
+    session_id = _create_session(api_client)
+    created = api_client.post(
+        "/api/v1/sessions",
+        json={"tenant_id": "acme-it-demo", "channel": "webrtc", "language": "ru"},
+    )
+    assert created.status_code == 200
+    assert "Куби" in created.json()["opening_greeting"]
+    with api_client.websocket_connect(f"/api/v1/ws/sessions/{session_id}") as websocket:
+        greeting = None
+        for _ in range(20):
+            message = websocket.receive_json()
+            if message["type"] == "AnswerEvent" and str(message["payload"].get("turn_id", "")).endswith(":opening"):
+                greeting = message["payload"]["answer_text"]
+                break
+        assert greeting is not None
+        assert "Куби" in greeting
+        assert "ИИ-ассистент" in greeting
 
 
 def test_json_asr_yields_pcm_tts_with_generation_id(api_client):

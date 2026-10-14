@@ -1,5 +1,3 @@
-version: '3.8'
-
 volumes:
   pg_data:
   redis_data:
@@ -8,6 +6,7 @@ volumes:
 
 services:
   api:
+    image: mach-api:demo
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -17,16 +16,20 @@ services:
     env_file:
       - .env
     environment:
-      VOICE_ASR_MODE: ${VOICE_ASR_MODE:-mock}
-      VOICE_TTS_MODE: ${VOICE_TTS_MODE:-mock}
+      # Image bakes T-one / Silero / BGE-M3 at build. Pin live so a host .env mock cannot leak.
+      VOICE_ASR_MODE: live
+      VOICE_TTS_MODE: real
+      ASR_MODEL: t-tech/t-one
+      ASR_DEVICE: cpu
+      TTS_MODEL_PATH: /app/models/tts/v5_cis_base_nostress.pt
+      TTS_VOICE: ru_bogdan
+      TTS_SAMPLE_RATE: "24000"
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-123789}@postgres:5432/${POSTGRES_DB:-voice_agent}
       SYNC_DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-123789}@postgres:5432/${POSTGRES_DB:-voice_agent}
       QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       EMBEDDING_MODEL_ID: ${EMBEDDING_MODEL_ID:-bge-m3-onnx}
       RERANKER_MODEL_ID: ${RERANKER_MODEL_ID:-none}
-    volumes:
-      - ./models/rag:/app/models/rag:ro
     restart: unless-stopped
     command: >
       sh -c "alembic upgrade head &&
@@ -40,16 +43,23 @@ services:
         condition: service_healthy
 
   voice_agent:
+    image: mach-api:demo
     build:
       context: .
-      dockerfile: apps/voice_agent/Dockerfile
+      dockerfile: apps/api/Dockerfile
     profiles: ["demo"]
     env_file:
       - .env
     environment:
-      VOICE_ASR_MODE: ${VOICE_ASR_MODE:-mock}
-      VOICE_TTS_MODE: ${VOICE_TTS_MODE:-mock}
+      VOICE_ASR_MODE: live
+      VOICE_TTS_MODE: real
+      ASR_MODEL: t-tech/t-one
+      ASR_DEVICE: cpu
+      TTS_MODEL_PATH: /app/models/tts/v5_cis_base_nostress.pt
+      TTS_VOICE: ru_bogdan
+      TTS_SAMPLE_RATE: "24000"
       VOICE_AGENT_PORT: "8100"
+    command: python -m app.voice_agent.worker
     ports:
       - "8100:8100"
     restart: unless-stopped

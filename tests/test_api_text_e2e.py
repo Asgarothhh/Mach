@@ -219,6 +219,9 @@ def test_ws_bound_session_yields_tts(api_client):
         saw_answer = False
         while True:
             message = websocket.receive_json()
+            turn_id = str(message.get("payload", {}).get("turn_id") or "")
+            if turn_id.endswith(":opening"):
+                continue
             if message["type"] == "AnswerEvent":
                 saw_answer = True
                 assert message["payload"]["answer_text"]

@@ -81,6 +81,9 @@ test('compose and Dockerfile enable backend admin sessions on the demo stand', a
   const compose = await readFile(resolve(root, '../../docker-compose.yml'), 'utf8');
   assert.match(dockerfile, /ARG VITE_BACKEND_ADMIN_SESSIONS=true/);
   assert.match(compose, /VITE_BACKEND_ADMIN_SESSIONS:\s*"true"/);
+  assert.match(compose, /VOICE_ASR_MODE:\s*live/);
+  assert.match(compose, /VOICE_TTS_MODE:\s*real/);
+  assert.doesNotMatch(compose, /VOICE_ASR_MODE:\s*mock/);
 });
 
 test('clearing the text dialog ends the cached backend session', async () => {

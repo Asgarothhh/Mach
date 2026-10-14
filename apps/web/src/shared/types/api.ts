@@ -3,6 +3,7 @@ export interface CreateSessionResponse {
   /** Present only if LiveKit is configured. Never create tokens in the browser. */
   token?: string;
   expires_at?: string;
+  opening_greeting?: string;
 }
 
 export interface ApiErrorPayload {

@@ -59,17 +59,27 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def download(url: str, destination: Path) -> None:
+def download(url: str, destination: Path, attempts: int = 5) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     tmp = destination.with_suffix(destination.suffix + ".part")
-    print(f"downloading {url}")
-    with urllib.request.urlopen(url) as response, tmp.open("wb") as fh:  # noqa: S310
-        while True:
-            block = response.read(1024 * 1024)
-            if not block:
-                break
-            fh.write(block)
-    tmp.replace(destination)
+    last_error: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        print(f"downloading {url} (attempt {attempt}/{attempts})")
+        try:
+            with urllib.request.urlopen(url, timeout=120) as response, tmp.open("wb") as fh:  # noqa: S310
+                while True:
+                    block = response.read(1024 * 1024)
+                    if not block:
+                        break
+                    fh.write(block)
+            tmp.replace(destination)
+            return
+        except Exception as exc:  # noqa: BLE001 - retry transient hub/network errors
+            last_error = exc
+            print(f"download failed: {exc}", file=sys.stderr)
+            if tmp.exists():
+                tmp.unlink()
+    raise RuntimeError(f"failed to download {url} after {attempts} attempts") from last_error
 
 
 def main() -> int:

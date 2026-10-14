@@ -138,7 +138,9 @@ def test_social_replies_do_not_repeat_and_do_not_claim_humanity() -> None:
     first = social_reply(routed)
     second = social_reply(routed, recent_answers=(first,))
     assert first != second
+    assert "Куби" in first
     identity = social_reply(route_turn("ты человек?"))
+    assert "Куби" in identity
     assert "не человек" in identity or "ассистент" in identity
 
 
