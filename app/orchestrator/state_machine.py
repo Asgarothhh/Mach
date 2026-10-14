@@ -1,7 +1,11 @@
 import asyncio
+from collections import deque
+from dataclasses import dataclass
 from enum import Enum
 
 from pydantic import BaseModel, Field
+
+HISTORY_EXCHANGES = 3
 
 
 class SessionState(str, Enum):
@@ -48,11 +52,23 @@ class TurnContext(BaseModel):
         return self.cancel_event.is_set()
 
 
+@dataclass(frozen=True)
+class Exchange:
+    """One finished turn kept in short-lived session memory (redacted text only)."""
+
+    user_text: str
+    query: str
+    answer_text: str
+    kind: str
+
+
 class SessionManager:
     def __init__(self):
         self.active_sessions: dict[str, SessionState] = {}
         self.active_turns: dict[str, TurnContext] = {}
         self.bindings: dict[str, SessionBinding] = {}
+        self.history: dict[str, deque[Exchange]] = {}
+        self.turn_counts: dict[str, int] = {}
 
     def bind(self, session_id: str, binding: SessionBinding) -> None:
         self.bindings[session_id] = binding
@@ -62,10 +78,26 @@ class SessionManager:
 
     def unbind(self, session_id: str) -> None:
         self.bindings.pop(session_id, None)
+        self.history.pop(session_id, None)
+        self.turn_counts.pop(session_id, None)
+
+    def next_sequence_no(self, session_id: str) -> int:
+        self.turn_counts[session_id] = self.turn_counts.get(session_id, 0) + 1
+        return self.turn_counts[session_id]
+
+    def record_exchange(self, session_id: str, exchange: Exchange) -> None:
+        if session_id not in self.history:
+            self.history[session_id] = deque(maxlen=HISTORY_EXCHANGES)
+        self.history[session_id].append(exchange)
+
+    def recent_exchanges(self, session_id: str) -> tuple[Exchange, ...]:
+        return tuple(self.history.get(session_id, ()))
 
     def transition(self, session_id: str, new_state: SessionState):
         # Здесь можно добавить валидацию допустимых переходов
         self.active_sessions[session_id] = new_state
+        if new_state is SessionState.CLOSED:
+            self.history.pop(session_id, None)
 
     def handle_barge_in(self, session_id: str):
         self.transition(session_id, SessionState.INTERRUPTED)

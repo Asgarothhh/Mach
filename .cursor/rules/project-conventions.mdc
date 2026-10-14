@@ -1,0 +1,11 @@
+---
+description: Project-wide coding conventions and verification requirements.
+alwaysApply: true
+---
+
+- Follow the existing project architecture and coding conventions.
+- Inspect relevant source files before editing.
+- Keep changes minimal and focused.
+- Add tests for behavior changes.
+- Report actual test results and known limitations.
+- Never claim unverified success.

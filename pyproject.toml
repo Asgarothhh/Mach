@@ -58,6 +58,8 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 "scripts/tts_ab_eval.py" = ["E501"]
 "scripts/asr_benchmark.py" = ["E501"]
 "scripts/emotion_demo_build.py" = ["E501"]
+# QDRANT_URL must be cleared before app imports so unit tests keep the stub backend.
+"tests/conftest.py" = ["E402"]
 
 [tool.mypy]
 python_version = "3.11"

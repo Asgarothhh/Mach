@@ -1,3 +1,8 @@
+import os
+
+# Must run before any app import so the API process keeps the lexical stub in unit tests.
+os.environ.pop("QDRANT_URL", None)
+
 from datetime import UTC, datetime
 
 import pytest

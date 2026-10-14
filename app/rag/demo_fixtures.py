@@ -71,7 +71,7 @@ def _chunk(
 
 
 def acme_chunks() -> tuple[ChunkMetadata, ...]:
-    """Synthetic business FAQ. Queries must use these exact word forms (no stemming)."""
+    """Synthetic business FAQ. Queries are matched via stems and synonym concepts."""
     return (
         _chunk(
             chunk_id="acme-hours-1",

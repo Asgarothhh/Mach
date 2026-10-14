@@ -19,6 +19,14 @@ dev = [
     "ruff>=0.5",
     "mypy>=1.10",
 ]
+qdrant = [
+    "httpx>=0.25",
+]
+onnx = [
+    "onnxruntime>=1.18",
+    "tokenizers>=0.19",
+    "numpy>=1.26",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -38,10 +46,24 @@ init_forbid_extra = true
 init_typed = true
 warn_required_dynamic_aliases = true
 
+[[tool.mypy.overrides]]
+module = [
+    "onnxruntime",
+    "onnxruntime.*",
+    "tokenizers",
+    "tokenizers.*",
+    "redis",
+    "redis.*",
+]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "strict"
 addopts = "--import-mode=importlib"
+markers = [
+    "integration: requires Qdrant, ONNX weights or other optional runtime deps",
+]
 
 [tool.ruff]
 target-version = "py312"
@@ -52,3 +74,7 @@ select = ["E", "F", "I", "B", "UP", "SIM", "RUF", "S"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101"]
+# Russian lexicon: Cyrillic words like "ага" are flagged as Latin look-alikes.
+"src/mts_rag/lexical.py" = ["RUF001"]
+"tests/test_term_normalization.py" = ["S101", "RUF001"]
+"tests/test_paraphrase_retrieval.py" = ["S101", "RUF001"]

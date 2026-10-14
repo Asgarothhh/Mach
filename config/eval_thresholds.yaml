@@ -1,0 +1,8 @@
+# Demo-locked retrieval gates (MLB-GRD-01). Values match QdrantRetrieverSettings.
+# Recalibrate on a labeled business-call set before production.
+version: 1
+min_term_coverage: 0.5
+min_dense_score: 0.55
+min_rerank_score: 0.5
+p95_retrieval_ms_without_rerank: 120
+p95_retrieval_ms_with_rerank: 220

@@ -1,12 +1,14 @@
 # mts-rag
 
-Retrieval building blocks for the MTS voice agent knowledge base (track 1), plus an in-memory
-lexical `KnowledgeRetriever` stub. The stub lets the orchestrator and backend integrate against the
-SSOT §14.2 contract before Qdrant, dense embeddings and the reranker exist.
+Retrieval building blocks for the MTS voice agent knowledge base (track 1): filters, RRF,
+evidence status, an in-memory lexical stub, and Qdrant hybrid retrieval (dense + BM25-hash
+sparse + client-side RRF).
 
 - Distribution: `mts-rag`, import package `mts_rag`.
 - Depends only on `mts-contracts-knowledge` (`mts_contracts.knowledge`). All request, result and
   error types come from there. This package never imports `mts_ingestion`.
+- `mts_rag/__init__.py` does not import Qdrant or ONNX. Import `mts_rag.qdrant` when you need
+  the hybrid retriever.
 
 ## SSOT references
 
@@ -21,7 +23,7 @@ SSOT §14.2 contract before Qdrant, dense embeddings and the reranker exist.
 - §14.2: `KnowledgeRetriever` protocol.
 
 The work items are in `docs/MTS_VOICE_AGENT_4_DEVELOPERS.md` §4: MLB-RET-05, MLB-RET-06,
-MLB-S1-STUB and MLB-RET-11.
+MLB-S1-STUB, MLB-RET-11, MLB-RET-12 (cache deferred). Architecture: `docs/adr/ADR-0002-qdrant-hybrid-retrieval.md`.
 
 ## Modules
 
@@ -32,6 +34,10 @@ MLB-S1-STUB and MLB-RET-11.
 | `mts_rag.lexical` | `tokenize`, `lexical_score` |
 | `mts_rag.evidence` | `detect_conflicts`, `compute_evidence_status` |
 | `mts_rag.stub` | `InMemoryKnowledgeRetriever`, `LexicalStubSettings` |
+| `mts_rag.qdrant` | `QdrantHybridRetriever` (import this module directly) |
+| `mts_rag.qdrant_http` | `HttpQdrantGateway` (Qdrant 1.7 REST via httpx) |
+| `mts_rag.sparse` | `Bm25HashSparseEncoder` (`sparse_bm25h_v2`, stemmed/concept terms) |
+| `mts_rag.testing` | `HashingFakeEmbedder`, `InMemoryQdrantGateway` |
 
 ## Install and test
 
@@ -112,8 +118,13 @@ Only `sufficient` permits a grounded answer (`RetrievalResult.is_answerable`).
   2. services, topics, source types, document IDs;
   3. status, `valid_from > t` (not yet valid), `valid_to <= t` (expired). The validity
      interval is half-open.
-- **Scoring:** the score is `|query terms ∩ chunk terms| / |query terms|`. The terms come from
-  NFC + casefold + `\w+` tokens over the title, `section_path` and text. Candidates are chunks
+- **Scoring:** the score is `term_coverage(query_terms(query), document_terms(chunk))`: the
+  share of query content terms found in the chunk. Terms come from NFC + casefold + `\w+`
+  tokens over the title, `section_path` and text, then a light Russian stemmer and a few
+  service-desk synonym concepts (price, hours, contact, support, balance). On the query side,
+  politeness fillers, question words, pronouns and prepositions are not counted, and neither
+  are negation particles (they stay in the query text). Stems of 4+ characters also match by
+  shared prefix. Candidates are chunks
   with score > 0, ordered by score descending, then `chunk_id`, and capped at `sparse_top_k`.
   Diagnostics fill `sparse_*` and `rrf_*`; `dense_*` and `rerank_*` stay `None`, and the mode is
   `stub_lexical`. The relevance threshold is `LexicalStubSettings.min_relevance_score`
@@ -122,16 +133,47 @@ Only `sufficient` permits a grounded answer (`RetrievalResult.is_answerable`).
 - **Determinism:** time comes from the injected `clock` (deadline, `duration_ms`) and `now`
   (default reference time). Results are deterministic for identical inputs.
 
+## Qdrant hybrid (when `QDRANT_URL` is set)
+
+The API process chooses the backend in `build_knowledge_runtime()`:
+
+| Condition | Backend |
+|---|---|
+| `QDRANT_URL` unset | lexical stub (demo chunks in memory) |
+| `QDRANT_URL` set | `QdrantHybridRetriever`; no silent stub fallback if Qdrant is down |
+
+Compose pins `qdrant/qdrant:v1.7.4` and sets `QDRANT_URL=http://qdrant:6333`. Seed runs in a
+lifespan background task (`acme_chunks` / `mts_chunks`, `activate=True`) with retry 1s→30s.
+The `DialogOrchestrator` keeps the retriever instance created at import.
+
+```bash
+# Host Qdrant (optional; compose already starts the service)
+docker compose --profile demo up -d qdrant
+# API image installs onnxruntime/tokenizers; weights are NOT downloaded.
+# Place BGE-M3 ONNX under models/rag/bge-m3-onnx/ (model.onnx + tokenizer.json).
+# Without weights the retriever degrades to sparse-only (`SPARSE_ONLY` + `EMBEDDER_UNAVAILABLE`).
+```
+
+Ready (`GET /health/ready`) `checks.knowledge.backend` is `qdrant` or `stub`. In Qdrant mode
+`checks.retriever=ok` requires every demo tenant: version ≥ 1.7, alias resolves, point count > 0.
+No embedding is done on the health path.
+
 ## Known limitations
 
-- Lexical only: no dense retrieval, sparse model or reranker yet, so paraphrases without shared
-  words are not found. There is no stemming, so Russian inflections such as
-  "роуминг"/"роуминга" don't match, and there is no ASR variant expansion.
-- The stub uses a single query variant, the whitespace-normalised query.
+- Retrieve cache stores hashed keys and omits query text; Redis is used when `REDIS_URL` is set.
+- `excluded_counts` is computed by scrolling the tenant collection (cap `exclusion_scroll_limit`).
+- Demo-locked gates live in `config/eval_thresholds.yaml`; production calibration is MLB-GRD-01.
+- No live crawler: only demo fixtures are published at startup.
+- If Qdrant is configured but down / 5xx / version < 1.7, retrieve raises `RetrievalUnavailable`
+  (HTTP 503 on ready). There is no silent stub fallback.
+- The stub remains lexical-only (stemming and synonym concepts, no embeddings). Because
+  coverage ignores function words, a query with a partly different entity (another country or
+  product) can pass the 0.5 gate; the orchestrator prompt then requires the model to say the
+  data is missing. The synonym concepts are generic and small; tenant vocabularies are not
+  modelled.
 - Conflict detection only covers several active revisions of the *same* document
   (`multiple_active_revisions`). Conflicting prices or terms across *different* documents are
   deferred to MLB-GRD-02.
-- The threshold is not calibrated. MLB-GRD-01 will calibrate thresholds per retrieval mode.
 - Crawl-age staleness is measured against the resolved reference time
   (`filters.reference_time`, or `now()` when it is not set).
 

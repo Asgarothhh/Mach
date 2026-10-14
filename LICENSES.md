@@ -43,6 +43,9 @@
 | soundfile | BSD-3-Clause | чтение/запись аудио (eval) | approved |
 | soxr (python-soxr / libsoxr) | LGPL-2.1 | ресемплинг в eval-скриптах | approved-eval (LGPL — только инструменты оценки) |
 | numpy | BSD-3-Clause | базовые операции с PCM | approved |
+| onnxruntime | MIT | dense embeddings / optional rerank (API image only) | approved |
+| tokenizers (Hugging Face) | Apache-2.0 | BGE-M3 ONNX tokenizer (API image only) | approved |
+| Qdrant | Apache-2.0 | hybrid vector store (compose `qdrant/qdrant:v1.7.4`) | approved |
 | pydantic | MIT | контракты событий | approved |
 | pytest, pytest-asyncio, ruff, mypy | MIT / PSF / Apache-2.0 | dev/CI | approved |
 | torch (PyTorch) | BSD-3-Clause | исполнение моделей | approved |
@@ -85,6 +88,8 @@
 | Silero TTS `v5_5_ru` (aidar, baya, kseniya, xenia, eugene) | CC BY-NC-SA 4.0 | **запрещено без отдельного соглашения** | demo-only | интонация вопросов, ударения, омографы, 8/24/48 кГц |
 | Silero TTS `v5_4_ru` | CC BY-NC-SA 4.0 | запрещено без соглашения | demo-only | без голоса eugene |
 | Silero TTS `v5_cis_base_nostress` (`ru_*`) | MIT | разрешено | candidate | нужна явная разметка ударений; без интонации вопросов |
+| BGE-M3 ONNX (BAAI) | MIT | разрешено | benchmark | dense embeddings; веса не качаются при compose up |
+| BGE reranker v2-m3 | Apache-2.0 | разрешено | candidate-not-integrated | `RERANKER_MODEL_ID=none` по умолчанию |
 | Whisper large-v3-turbo (faster-whisper) | MIT | разрешено | candidate | baseline качества транскрипции |
 | sherpa-onnx RU модели | per-model | требует review на выбранной модели | candidate | выбрать по WER/latency на своём наборе |
 | Piper voice-модели | per-voice | требует review на выбранном голосе | review | каждая voice-модель лицензируется отдельно |

@@ -1,0 +1,3 @@
+# Installed only in apps/api/Dockerfile. Keep this file free of heavy ML frameworks.
+onnxruntime>=1.18,<2
+tokenizers>=0.19,<1

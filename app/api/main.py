@@ -31,7 +31,7 @@ from app.orchestrator.dialog_flow import (
 )
 from app.orchestrator.openrouter_client import OpenRouterAdapter
 from app.orchestrator.state_machine import SessionBinding, SessionManager, SessionState
-from app.rag.retriever import KnowledgeRuntime, build_demo_runtime
+from app.rag.retriever import KnowledgeRuntime, build_knowledge_runtime
 from app.schemas.api import (
     HandoffResponse,
     SessionCreateRequest,
@@ -55,7 +55,7 @@ logger = get_logger("api_main")
 
 session_manager = SessionManager()
 guardrails = GuardrailsService()
-runtime: KnowledgeRuntime = build_demo_runtime()
+runtime: KnowledgeRuntime = build_knowledge_runtime()
 store: TurnStore = SqlAlchemyTurnStore(AsyncSessionLocal)
 
 _requested_llm = resolve_llm_model_id()
@@ -75,11 +75,15 @@ dialog_orchestrator = DialogOrchestrator(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    await runtime.start()
     try:
-        await store.ensure_tenants(runtime.tenants)
-    except Exception as exc:  # noqa: BLE001 - best-effort startup, never swallow BaseException
-        logger.error("ensure_tenants_failed", error_class=exc.__class__.__name__)
-    yield
+        try:
+            await store.ensure_tenants(runtime.tenants)
+        except Exception as exc:  # noqa: BLE001 - best-effort startup, never swallow BaseException
+            logger.error("ensure_tenants_failed", error_class=exc.__class__.__name__)
+        yield
+    finally:
+        await runtime.close()
 
 
 app = FastAPI(title="MTS Voice Agent API", version="1.0", lifespan=lifespan)
@@ -119,10 +123,16 @@ async def readiness():
             postgres = "ok" if await store.ping() else "unavailable"
     except Exception:  # noqa: BLE001 - postgres is informational and must not block ready
         postgres = "unavailable"
+    knowledge = {"backend": runtime.backend}
+    try:
+        knowledge = await runtime.knowledge_checks()
+    except Exception:  # noqa: BLE001 - knowledge details must not break readiness
+        knowledge = {"backend": runtime.backend, "qdrant": "unavailable"}
     checks = {
         "retriever": "ok" if retriever_ok else "unavailable",
         "postgres": postgres,
         "voice": voice_pipeline_status(),
+        "knowledge": knowledge,
     }
     body = {"status": "ready" if retriever_ok else "not_ready", "checks": checks}
     if retriever_ok:

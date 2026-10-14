@@ -33,6 +33,21 @@ MODELS: dict[str, dict[str, str]] = {
         "filename": "v5_cis_base_nostress.pt",
         "license": "MIT",
     },
+    "bge-m3-onnx": {
+        "url": "https://huggingface.co/BAAI/bge-m3/resolve/main/onnx/model.onnx",
+        "filename": "bge-m3-onnx/model.onnx",
+        "license": "MIT",
+    },
+    "bge-m3-onnx-data": {
+        "url": "https://huggingface.co/BAAI/bge-m3/resolve/main/onnx/model.onnx_data",
+        "filename": "bge-m3-onnx/model.onnx_data",
+        "license": "MIT",
+    },
+    "bge-m3-onnx-tokenizer": {
+        "url": "https://huggingface.co/BAAI/bge-m3/resolve/main/onnx/tokenizer.json",
+        "filename": "bge-m3-onnx/tokenizer.json",
+        "license": "MIT",
+    },
 }
 
 

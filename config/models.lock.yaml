@@ -254,6 +254,32 @@ entries:
     commercial_use: review
     status: candidate
     notes: "Streaming interim hypotheses are the product requirement; per-model license review pending."
+  - id: bge-m3-onnx
+    kind: embedding
+    title: "BGE-M3 ONNX (BAAI) — dense multilingual embeddings"
+    source_url: https://huggingface.co/BAAI/bge-m3
+    weights_url: https://huggingface.co/BAAI/bge-m3/resolve/main/onnx/model.onnx
+    sha256: null
+    license:
+      code: MIT
+      weights: MIT
+    commercial_use: allowed
+    status: benchmark
+    notes: >
+      Official ONNX export under onnx/. Not downloaded at compose up. Used by
+      mts_rag.embeddings.OnnxDenseEmbedder when models/rag/bge-m3-onnx is present.
+  - id: bge-reranker-v2-m3-onnx
+    kind: reranker
+    title: "BGE reranker v2-m3 ONNX (candidate)"
+    source_url: https://huggingface.co/BAAI/bge-reranker-v2-m3
+    sha256: null
+    license:
+      code: Apache-2.0
+      weights: Apache-2.0
+    commercial_use: allowed
+    status: candidate-not-integrated
+    notes: >
+      Official repo ships safetensors, not ONNX. RERANKER_MODEL_ID defaults to none.
   - id: piper-tts
     kind: tts-alternative
     title: "Piper TTS + Russian voice"

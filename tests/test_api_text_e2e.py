@@ -1,3 +1,4 @@
+import time
 import uuid
 
 import pytest
@@ -178,6 +179,7 @@ def test_ws_invalid_payload_logs_error_class_only(api_client, monkeypatch):
                 "payload": {"text": "+375 29 123-45-67"},
             }
         )
+        time.sleep(0.05)
     logged = [item for item in events if item[0] == "ws_validation_error"]
     assert logged
     _, fields = logged[0]
@@ -243,6 +245,7 @@ def test_ready_200_without_openrouter_key(api_client, monkeypatch):
     assert body["status"] == "ready"
     assert body["checks"]["retriever"] == "ok"
     assert body["checks"]["voice"] == "mock"
+    assert body["checks"]["knowledge"]["backend"] == "stub"
     assert "openrouter" not in body["checks"]
 
 

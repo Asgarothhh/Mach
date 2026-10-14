@@ -6,6 +6,8 @@ import pytest
 from mts_contracts.knowledge import ChunkMetadata
 
 from mts_rag import InMemoryKnowledgeRetriever, LexicalStubSettings
+from mts_rag.qdrant import QdrantHybridRetriever, QdrantRetrieverSettings
+from mts_rag.testing import HashingFakeEmbedder, InMemoryQdrantGateway
 
 TENANT_A = "acme-it-demo"
 FIXED_NOW = datetime(2026, 10, 13, 12, 0, tzinfo=UTC)
@@ -62,5 +64,31 @@ def make_retriever() -> Callable[..., InMemoryKnowledgeRetriever]:
         now: Callable[[], datetime] = lambda: FIXED_NOW,
     ) -> InMemoryKnowledgeRetriever:
         return InMemoryKnowledgeRetriever(settings, clock=clock, now=now)
+
+    return factory
+
+
+@pytest.fixture
+def make_qdrant() -> Callable[..., tuple[QdrantHybridRetriever, InMemoryQdrantGateway]]:
+    def factory(
+        *,
+        embedder: Any = ...,
+        reranker: Any = None,
+        settings: QdrantRetrieverSettings | None = None,
+        clock: Callable[[], float] = lambda: 100.0,
+        now: Callable[[], datetime] = lambda: FIXED_NOW,
+        gateway: InMemoryQdrantGateway | None = None,
+    ) -> tuple[QdrantHybridRetriever, InMemoryQdrantGateway]:
+        store = gateway if gateway is not None else InMemoryQdrantGateway()
+        dense = HashingFakeEmbedder() if embedder is ... else embedder
+        retriever = QdrantHybridRetriever(
+            store,
+            embedder=dense,
+            reranker=reranker,
+            settings=settings or QdrantRetrieverSettings(collection_prefix="kbtest_unit"),
+            clock=clock,
+            now=now,
+        )
+        return retriever, store
 
     return factory

@@ -23,7 +23,9 @@ docker compose --profile demo up --build -d
 ```
 
 Сервисы: `postgres`, `redis`, `qdrant`, `prometheus`, `api`, `voice_agent`, `web`, `ingestion`.
-Qdrant поднимается, но RAG остаётся in-memory stub. `ingestion` **не** обходит mts.by.
+Compose задаёт `QDRANT_URL=http://qdrant:6333` для `api` — после seed RAG работает как hybrid
+(или sparse-only без весов BGE-M3). Юнит-тесты снимают `QDRANT_URL` и остаются на lexical stub.
+`ingestion` **не** обходит mts.by.
 
 Переменные речи по умолчанию: `VOICE_ASR_MODE=mock`, `VOICE_TTS_MODE=mock`. Веса моделей **не** скачиваются при `up`.
 
@@ -114,7 +116,7 @@ docker compose --profile demo up -d --build web
 
 ## 5. Модели (opt-in, не при compose up)
 
-Compose demo profile остаётся **mock**. Live ASR/TTS — только host-процессы в conda env `mach` + extras. Веса **не** скачиваются при `compose up`. RAG — in-memory fixtures (`acme-it-demo` / `mts-public-demo`), не BGE-M3 и не Qdrant. LiveKit/SIP не настроены. T-one и Silero VAD качаются при **первой live-загрузке**, не при старте compose.
+Compose demo profile остаётся **mock** для речи. Live ASR/TTS — только host-процессы в conda env `mach` + extras. Веса **не** скачиваются при `compose up`. RAG: Qdrant v1.7.4 + seed demo-чанков; dense BGE-M3 только если `models/rag/bge-m3-onnx` смонтирован. LiveKit/SIP не настроены. T-one и Silero VAD качаются при **первой live-загрузке**, не при старте compose.
 
 ```bash
 # CPU torch first so extras do not pull CUDA
@@ -161,15 +163,58 @@ DATABASE_URL=postgresql+asyncpg://admin:123789@127.0.0.1:5433/voice_agent \
 
 Frontend (Vite): `VITE_DEMO_MODE=false VITE_BACKEND_TEXT_TEST=true VITE_API_BASE_URL=http://localhost:8000/api/v1 VITE_LIVEKIT_URL= npm run dev`. Баннер «Browser test channel / mock — не телефония» означает отсутствие SIP, не mock ASR.
 
-## 7. BLOCKED на этом стенде
+## 7. Qdrant hybrid RAG
+
+По умолчанию compose поднимает Qdrant `v1.7.4` на `127.0.0.1:6333` и передаёт в `api`:
+
+* `QDRANT_URL=${QDRANT_URL:-http://qdrant:6333}`
+* `EMBEDDING_MODEL_ID=${EMBEDDING_MODEL_ID:-bge-m3-onnx}`
+* `RERANKER_MODEL_ID=${RERANKER_MODEL_ID:-none}`
+
+Без `QDRANT_URL` (локальный uvicorn / pytest) остаётся lexical stub.
+
+```bash
+docker compose --profile demo up -d qdrant
+curl -sS http://127.0.0.1:6333/   # version >= 1.7.0
+docker compose --profile demo up --build -d api
+curl -sS http://localhost:8000/health/ready
+# checks.knowledge.backend=qdrant; seed=ok|pending|failed; retriever=ok только если
+# у обоих demo-tenant alias резолвится и count>0. Embedding на /health не вызывается.
+```
+
+Seed (фон, backoff 1s→30s) публикует `acme-it-demo` и `mts-public-demo` в коллекции
+`kb__{tenant}__{DEMO_INDEX_REVISION}.{fp12}` и атомарно ставит alias `…__active`.
+Повторный старт с тем же fingerprint — upsert тех же point id, без delete.
+
+Веса BGE-M3 **не** скачиваются. Чтобы включить dense:
+
+```bash
+# записи есть в scripts/fetch_models.py — запускайте явно, не из compose up
+conda run -n mach python scripts/fetch_models.py bge-m3-onnx --output-dir models/rag
+conda run -n mach python scripts/fetch_models.py bge-m3-onnx-tokenizer --output-dir models/rag
+```
+
+Нужны `models/rag/bge-m3-onnx/model.onnx` и `tokenizer.json`. Иначе retrieve деградирует в
+`SPARSE_ONLY` + `EMBEDDER_UNAVAILABLE`. Если Qdrant недоступен при заданном `QDRANT_URL`,
+stub **не** подключается: `RetrievalUnavailable`, ready 503.
+
+Кэш retrieve: при `REDIS_URL` — Redis, иначе in-memory; ключ — hash запроса, в значении нет
+сырого query. `excluded_counts` считается по scroll коллекции. Старые ревизии сверх
+`keep_revisions=2` удаляются. Пороги demo: `config/eval_thresholds.yaml`. Crawler по-прежнему
+нет: seed только demo-фикстур. Если Qdrant недоступен при заданном `QDRANT_URL`, stub не
+подключается.
+
+Подробности: `packages/rag/README.md`, `docs/adr/ADR-0002-qdrant-hybrid-retrieval.md`.
+
+## 8. BLOCKED на этом стенде
 
 * LiveKit и media token в `POST /sessions` (SSOT §9 / §15).
 * SIP / МТС-транк — нет credentials.
-* Crawler, Qdrant hybrid, embeddings, reranker (BGE-M3).
+* Crawler live URL (ingestion worker всё ещё stub). Production-калибровка порогов RAG.
 * `/admin/knowledge/*`, `/tenants`, `/calls`, scenarios, analytics — UI в demo/disabled. В публичной сборке (`VITE_DEMO_MODE=false`) экраны «Подключение» и «Сценарии» при 404 на `/tenants*` деградируют на локальные фикстуры (`src/shared/api/stage1Fallback.ts`), чтобы не показывать сырую ошибку API; запись идёт только в память браузера. Созданные так тенанты не попадают в переключатель и не становятся активными, а живые сессии всегда идут с бэкенд-тенантом (`acme-it-demo` / `mts-public-demo`, `resolveSessionTenantId`) — иначе `POST /sessions` вернул бы 404 `tenant_not_available`. Когда бэкенд реализует control-plane ручки, фолбэк перестаёт срабатывать сам.
 * Chatterbox / Kokoro / Piper / Whisper как default cascade.
 * Synthetic-demo LLM: `google/gemma-4-26b-a4b-it` via OpenRouter (allowlist always includes Gemma). `OPENROUTER_REQUIRE_ZDR` does not attach `zdr` for Gemma (no ZDR route). EXTERNAL_LLM_ALLOWED for real telephony remains false.
 
-## 8. Следующий шаг
+## 9. Следующий шаг
 
 Self-hosted LiveKit в Compose, короткий media token, voice-agent как LiveKit worker. Не имитировать «телефонный продукт» до SIP credentials.

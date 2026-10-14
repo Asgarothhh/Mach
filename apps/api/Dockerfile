@@ -3,6 +3,8 @@ WORKDIR /app
 
 COPY requirements.txt .
 RUN pip install --retries 10 --timeout 60 --no-cache-dir -r requirements.txt
+COPY requirements-rag.txt .
+RUN pip install --retries 10 --timeout 60 --no-cache-dir -r requirements-rag.txt
 
 COPY packages/contracts/knowledge ./packages/contracts/knowledge
 COPY packages/rag ./packages/rag
