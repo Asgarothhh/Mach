@@ -39,3 +39,20 @@ export const liveVoiceConfigured = !env.demoMode && env.liveKitUrl.length > 0;
 export const wsVoiceConfigured = !env.demoMode && env.liveKitUrl.length === 0;
 
 export const LIVE_DEMO_TENANTS = ['acme-it-demo', 'mts-public-demo'] as const;
+
+/** Tenants the Stage-1 backend knows; anything else answers 404 tenant_not_available. */
+export function isLiveTenant(tenantId: string): boolean {
+  return (LIVE_DEMO_TENANTS as readonly string[]).includes(tenantId);
+}
+
+/**
+ * Tenant for a real backend session. Tenants created in the demo wizard exist in
+ * the browser only (no `POST /tenants` on the Stage-1 backend), so live sessions
+ * fall back to the configured backend tenant instead of failing with
+ * `404 tenant_not_available`.
+ */
+export function resolveSessionTenantId(tenantId?: string): string {
+  const candidate = tenantId?.trim() || env.backendTestTenantId;
+  if (env.demoMode) return candidate;
+  return isLiveTenant(candidate) ? candidate : env.backendTestTenantId;
+}

@@ -162,3 +162,21 @@ def test_preprocessor_is_applied_before_engine() -> None:
 
     assert engine.calls[0][0] == "Это з+амок."  # engine gets stress marks
     assert chunks[0].text == "Это замок."  # UI/log keeps clean text
+
+
+def test_ruaccent_preprocessor_converts_plus_marks_to_acute() -> None:
+    from speech.tts.preprocess import RuAccentStressPreprocessor
+
+    preprocessor = RuAccentStressPreprocessor(lambda text: "прив+ет, зам+ок")
+    assert preprocessor("...") == "приве\u0301т, замо\u0301к"
+
+
+def test_chatterbox_generate_kwargs_include_reference_voice() -> None:
+    from speech.tts.chatterbox_tts import ChatterboxTTSConfig, _generate_kwargs
+
+    cfg = ChatterboxTTSConfig(exaggeration=0.7, cfg_weight=0.3, audio_prompt_path="/tmp/ref.wav")
+    kwargs = _generate_kwargs(cfg)
+    assert kwargs["audio_prompt_path"] == "/tmp/ref.wav"
+    assert kwargs["exaggeration"] == 0.7
+    assert kwargs["cfg_weight"] == 0.3
+    assert "audio_prompt_path" not in _generate_kwargs(ChatterboxTTSConfig())

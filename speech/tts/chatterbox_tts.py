@@ -6,7 +6,8 @@ Why it is a candidate to replace Silero RU (see ``LICENSES.md``):
 * 23 languages including Russian (``language_id="ru"``);
 * V3 multilingual checkpoint: improved speaker similarity, fewer
   hallucinations; a built-in default voice is used when no reference clip is
-  passed (no voice-rights questions for the demo);
+  passed (no voice-rights questions for the demo), and an optional
+  ``audio_prompt_path`` conditions the timbre on a reference clip;
 * every output is watermarked by Resemble's PerTh (responsible-AI feature).
 
 Trade-offs recorded for the benchmark: an autoregressive 0.5B model needs a
@@ -46,8 +47,24 @@ class ChatterboxTTSConfig(BaseModel):
     device: str = Field(default="auto", description="auto | cuda | cpu")
     exaggeration: float = Field(default=0.5, ge=0.0)
     cfg_weight: float = Field(default=0.5, ge=0.0)
+    audio_prompt_path: str | None = Field(
+        default=None,
+        description="Optional reference clip conditioning the voice; None uses the built-in voice",
+    )
     sample_rate: int = Field(default=NATIVE_SAMPLE_RATE, gt=0)
     max_chunk_ms: int = Field(default=120, gt=0)
+
+
+def _generate_kwargs(cfg: ChatterboxTTSConfig) -> dict[str, object]:
+    """Model kwargs for one ``generate`` call (kept separate for unit tests)."""
+    kwargs: dict[str, object] = {
+        "language_id": cfg.language_id,
+        "exaggeration": cfg.exaggeration,
+        "cfg_weight": cfg.cfg_weight,
+    }
+    if cfg.audio_prompt_path:
+        kwargs["audio_prompt_path"] = cfg.audio_prompt_path
+    return kwargs
 
 
 class ChatterboxTTSAdapter:
@@ -132,12 +149,7 @@ class _ChatterboxEngine:
         # ``speaker``/``sample_rate`` are fixed by the model (built-in default
         # voice, 24 kHz): documented above, enforced by the adapter.
         with self._torch.no_grad():
-            wav = self._model.generate(
-                text,
-                language_id=self._cfg.language_id,
-                exaggeration=self._cfg.exaggeration,
-                cfg_weight=self._cfg.cfg_weight,
-            )
+            wav = self._model.generate(text, **_generate_kwargs(self._cfg))
         if hasattr(wav, "detach"):
             wav = wav.detach().cpu().numpy()
         return np.asarray(wav, dtype=np.float32).reshape(-1)

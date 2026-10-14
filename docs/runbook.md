@@ -91,6 +91,27 @@ Smoke API: `python scripts/smoke_test.py` (нужен поднятый API).
 
 Голос: баннер **«Browser test channel / mock — не телефония»**. PCM16 идёт на `WS /api/v1/ws/sessions/{id}`. LiveKit не поднят (`VITE_LIVEKIT_URL` пуст).
 
+### Публичный демо-стенд (VPS Caddy → Tailscale → демо-машина)
+
+Вычисления идут на демо-машине (Tailscale `100.64.0.4`), VPS (`kametera`, `194.146.38.78`) только проксирует; сертификаты — Let's Encrypt (sslip.io). Caddyfile — `/etc/caddy/Caddyfile` (бэкапы рядом).
+
+| Домен | Куда проксируется | Что это |
+|---|---|---|
+| `app.194-146-38-78.sslip.io` | `/api/*`, `/health/*`, `/openapi.json` → `:8123`; остальное → `:3000` | UI из compose-стека (`mach-web-1`), API — host-стенд с живой речью |
+| `voice.194-146-38-78.sslip.io` | `/api/*` → `:8123`; остальное → `:8124` | Тестовый голосовой канал (PC PCM16 → WS) |
+| `tts.194-146-38-78.sslip.io` | → `:8077` | TTS-полигон |
+| `mach.194-146-38-78.sslip.io` | статика `/srv/mach-demo` | ML-страницы (A/B, ASR-бенчмарк, маскот-эмоции) |
+
+Host-процессы — systemd user-юниты: `voice-api` (`:8123`, live overrides в `~/.config/mach/host-stand.env` через drop-in), `voice-console` (`:8124`), `tts-playground` (`:8077`). БД — контейнер `mach-e2e-postgres` (host `:55432`). Перезапуск: `systemctl --user restart voice-api voice-console`.
+
+UI на домене — контейнер `web` из compose-стека (`:3000`), публичный API-base задан в `docker-compose.override.yml` (локальный файл, в main его нет):
+
+```bash
+docker compose --profile demo up -d --build web
+```
+
+Тот же override добавляет рабочий healthcheck для qdrant: в образе `qdrant/qdrant` нет `wget`, поэтому проверка из main (`wget -qO- .../healthz`) не может пройти, и контейнер вечно «unhealthy». Override проверяет тот же эндпоинт через `bash` + `/dev/tcp`.
+
 ## 5. Модели (opt-in, не при compose up)
 
 Compose demo profile остаётся **mock**. Live ASR/TTS — только host-процессы в conda env `mach` + extras. Веса **не** скачиваются при `compose up`. RAG — in-memory fixtures (`acme-it-demo` / `mts-public-demo`), не BGE-M3 и не Qdrant. LiveKit/SIP не настроены. T-one и Silero VAD качаются при **первой live-загрузке**, не при старте compose.
@@ -145,7 +166,7 @@ Frontend (Vite): `VITE_DEMO_MODE=false VITE_BACKEND_TEXT_TEST=true VITE_API_BASE
 * LiveKit и media token в `POST /sessions` (SSOT §9 / §15).
 * SIP / МТС-транк — нет credentials.
 * Crawler, Qdrant hybrid, embeddings, reranker (BGE-M3).
-* `/admin/knowledge/*`, `/tenants`, `/calls`, scenarios, analytics — UI в demo/disabled.
+* `/admin/knowledge/*`, `/tenants`, `/calls`, scenarios, analytics — UI в demo/disabled. В публичной сборке (`VITE_DEMO_MODE=false`) экраны «Подключение» и «Сценарии» при 404 на `/tenants*` деградируют на локальные фикстуры (`src/shared/api/stage1Fallback.ts`), чтобы не показывать сырую ошибку API; запись идёт только в память браузера. Созданные так тенанты не попадают в переключатель и не становятся активными, а живые сессии всегда идут с бэкенд-тенантом (`acme-it-demo` / `mts-public-demo`, `resolveSessionTenantId`) — иначе `POST /sessions` вернул бы 404 `tenant_not_available`. Когда бэкенд реализует control-plane ручки, фолбэк перестаёт срабатывать сам.
 * Chatterbox / Kokoro / Piper / Whisper как default cascade.
 * Synthetic-demo LLM: `google/gemma-4-26b-a4b-it` via OpenRouter (allowlist always includes Gemma). `OPENROUTER_REQUIRE_ZDR` does not attach `zdr` for Gemma (no ZDR route). EXTERNAL_LLM_ALLOWED for real telephony remains false.
 

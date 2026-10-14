@@ -1,5 +1,5 @@
 import { apiRequest } from '../../../shared/api/http';
-import { env } from '../../../shared/config/env';
+import { resolveSessionTenantId } from '../../../shared/config/env';
 import type { SourceCitation } from '../../../shared/types/api';
 import type { SendTextMessageInput, SendTextMessageResult } from './chat.service';
 
@@ -112,14 +112,14 @@ export function resetBackendTextSession(): void {
 
 async function getSessionId(preferredSessionId?: string, tenantId?: string): Promise<string> {
   if (preferredSessionId) return preferredSessionId;
-  const resolvedTenant = tenantId || env.backendTestTenantId;
+  const resolvedTenant = resolveSessionTenantId(tenantId);
   if (cachedSessionId && cachedTenantId === resolvedTenant) return cachedSessionId;
   cachedSessionId = null;
 
   const created = await apiRequest<{ session_id?: unknown }>('/sessions', {
     method: 'POST',
     body: {
-      tenant_id: tenantId || env.backendTestTenantId,
+      tenant_id: resolvedTenant,
       channel: 'mock',
       language: 'ru',
     },

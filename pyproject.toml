@@ -57,6 +57,7 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 # HTML template strings inside the report renderers are intentionally long.
 "scripts/tts_ab_eval.py" = ["E501"]
 "scripts/asr_benchmark.py" = ["E501"]
+"scripts/emotion_demo_build.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.11"

@@ -1,5 +1,5 @@
 import { apiRequest } from '../../../shared/api/http';
-import { env } from '../../../shared/config/env';
+import { resolveSessionTenantId } from '../../../shared/config/env';
 import type { CreateSessionResponse } from '../../../shared/types/api';
 
 /**
@@ -11,7 +11,7 @@ export async function createVoiceSession(tenantId?: string): Promise<CreateSessi
   const raw = await apiRequest<Record<string, unknown>>('/sessions', {
     method: 'POST',
     body: {
-      tenant_id: tenantId || env.backendTestTenantId,
+      tenant_id: resolveSessionTenantId(tenantId),
       channel: 'webrtc',
       language: 'ru',
     },
