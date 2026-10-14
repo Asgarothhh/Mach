@@ -1,0 +1,31 @@
+<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="mock.css">
+<style>body{width:1440px;padding:40px 56px;background:#fff} h3{font-size:12.5px;color:#6b7280;font-weight:600;margin:0 0 12px;letter-spacing:.02em}
+.sw{display:flex;flex-direction:column;gap:6px;width:120px;font-size:12.5px}.sw i{height:56px;border-radius:8px;border:1px solid #0001;display:block}.sw span{color:#4a505c}.sw b{font-weight:600}
+.g{display:grid;gap:36px}.row{display:flex;gap:14px;flex-wrap:wrap}.t{display:flex;align-items:baseline;gap:20px;padding:8px 0;border-bottom:1px solid #eee}.t small{width:150px;color:#6b7280;font-size:12.5px;flex:none}</style>
+<div class="g" style="grid-template-columns:1fr 1fr;gap:48px">
+<div class="g">
+ <div><h3>ЦВЕТ — нейтрали (тёплые)</h3><div class="row">
+  <div class="sw"><i style="background:#f6f6f4"></i><b>bg</b><span>#f6f6f4</span></div><div class="sw"><i style="background:#fff"></i><b>surface</b><span>#ffffff</span></div><div class="sw"><i style="background:#e4e4e0"></i><b>line</b><span>#e4e4e0</span></div>
+  <div class="sw"><i style="background:#16181d"></i><b>ink</b><span>#16181d · 16.9:1</span></div><div class="sw"><i style="background:#4a505c"></i><b>ink-2</b><span>#4a505c · 7.9:1</span></div><div class="sw"><i style="background:#6b7280"></i><b>ink-3</b><span>#6b7280 · 4.8:1</span></div></div></div>
+ <div><h3>ЦВЕТ — бренд и статусы (красный — только primary и активный пункт)</h3><div class="row">
+  <div class="sw"><i style="background:#e30611"></i><b>brand</b><span>#e30611</span></div><div class="sw"><i style="background:#0d7a4f"></i><b>ok</b><span>#0d7a4f</span></div><div class="sw"><i style="background:#9a5b00"></i><b>warn</b><span>#9a5b00</span></div><div class="sw"><i style="background:#b42318"></i><b>bad</b><span>#b42318</span></div><div class="sw"><i style="background:#1d5fbf"></i><b>info</b><span>#1d5fbf</span></div></div></div>
+ <div><h3>ФОРМА И ОТСТУПЫ</h3><div class="row" style="align-items:flex-end">
+  <div class="sw"><i style="height:56px;border-radius:6px;background:#f6f6f4"></i><b>r-1 · 6px</b><span>кнопки, поля</span></div><div class="sw"><i style="height:56px;border-radius:10px;background:#f6f6f4"></i><b>r-2 · 10px</b><span>карточки</span></div>
+  <div class="sw" style="width:260px"><i style="height:56px;background:repeating-linear-gradient(90deg,#e30611 0 4px,#fff 4px 8px);opacity:.5"></i><b>шаг 4px</b><span>4·8·12·16·20·24·32·48</span></div></div>
+  <div class="muted" style="margin-top:10px;font-size:13px">Сейчас: 31 разный border-radius (3…36px, 99, 100, 999). Теги и карточки без единого правила.</div></div>
+</div>
+<div class="g">
+ <div><h3>ТИПОГРАФИКА — Inter (подключить через @font-face), числа tabular</h3>
+  <div class="t"><small>H1 · 24/30 · 650</small><span style="font-size:24px;font-weight:650;letter-spacing:-.015em">Обзор звонков</span></div>
+  <div class="t"><small>H2 · 15/20 · 600</small><span style="font-size:15px;font-weight:600">Последние звонки</span></div>
+  <div class="t"><small>Body · 14/20 · 400</small><span>Маршруты, качество и доступность сервисов</span></div>
+  <div class="t"><small>Small · 13/18 · мин.</small><span style="font-size:13px;color:#4a505c">Номера показываются в скрытом виде</span></div>
+  <div class="t"><small>Метрика · 30/38 · 650</small><span class="num" style="font-size:30px;font-weight:650;letter-spacing:-.02em">318 · 71%</span></div>
+  <div class="t"><small>Mono · 12.5 · ID/код</small><span class="mono">acme-it-demo · tenant_id</span></div>
+  <div class="muted" style="margin-top:10px;font-size:13px">Сейчас: 178 из 329 объявлений font-size — 9–11px (54%). Минимум нового — 13px.</div></div>
+ <div><h3>КОМПОНЕНТЫ</h3><div class="row" style="gap:10px;align-items:center">
+  <span class="btn pri">Primary</span><span class="btn">Secondary</span><span class="btn sm">Small</span><span class="chip on">Фильтр: <b>активен</b></span><span class="chip">Фильтр</span></div>
+  <div class="row" style="gap:10px;margin-top:14px"><span class="tag ok">Решено</span><span class="tag info">Передан</span><span class="tag warn">Нет данных</span><span class="tag bad">Ошибка</span><span class="tag">Черновик</span>
+  <span class="st"><span class="dot"></span>Работает</span><span class="st"><span class="dot warn"></span>Деградация</span></div>
+  <div class="muted" style="margin-top:10px;font-size:13px">Статус в таблицах — точка + текст; цветные плашки — только там, где состояние решает действие.</div></div>
+</div></div>

@@ -1,0 +1,27 @@
+<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="mock.css"><script src="shell.js"></script>
+<script>
+const f=(l,v,h,big)=>`<div style="margin-bottom:18px"><label class="label">${l}</label><div class="field" style="${big?'min-height:78px;':''}">${v}</div>${h?`<div class="hint">${h}</div>`:''}</div>`;
+shell('scen','Сценарии',`
+<div class="page" style="max-width:none;padding-bottom:0">
+ <div class="head"><div><h1>Сценарии</h1><div class="sub">Поведение помощника: что говорить и когда передавать сотруднику.</div></div>
+  <div style="display:flex;gap:8px"><span class="btn pri">${icon('plus')} Новый сценарий</span></div></div>
+ <div style="display:grid;grid-template-columns:280px 1fr;gap:16px;align-items:start">
+  <div class="card">
+   <header><h2>Сценарии</h2><span class="meta">3</span></header>
+   ${[['Входящие вопросы','Опубликован · v4',1],['Жалобы','Черновик · v2',0],['Роуминг','Опубликован · v1',0]].map(([t,s,on])=>`<div style="padding:12px 20px;border-bottom:1px solid #e4e4e0;${on?'background:#f6f6f4;box-shadow:inset 3px 0 0 #e30611':''}"><div style="font-weight:600">${t}</div><div class="muted" style="font-size:13px">${s}</div></div>`).join('')}
+  </div>
+  <div class="card">
+   <header><div style="display:flex;gap:12px;align-items:center"><h2>Жалобы</h2><span class="tag warn">Черновик · несохранённые изменения</span></div><span class="meta">последнее сохранение 14:05</span></header>
+   <div style="display:flex;gap:24px;padding:0 20px;border-bottom:1px solid #e4e4e0;font-size:14px">
+     <span style="padding:12px 0;border-bottom:2px solid #16181d;font-weight:600">Ответы</span><span style="padding:12px 0;color:#6b7280">Маршрутизация <span class="tag">2</span></span><span style="padding:12px 0;color:#6b7280">История версий</span></div>
+   <div style="padding:24px 20px 8px;display:grid;grid-template-columns:1fr 1fr;gap:0 20px">
+     ${f('Название','Жалобы')}${f('Тема обращения','complaint')}
+     <div style="grid-column:1/3">${f('Приветствие','Здравствуйте! Чем могу помочь?','',1)}${f('Инструкции','Отвечай кратко и профессионально. Используй только подтверждённые источники.','Секреты и ключи сюда не добавляются.',1)}</div>
+   </div>
+   <div style="position:sticky;bottom:0;display:flex;justify-content:space-between;align-items:center;padding:12px 20px;border-top:1px solid #e4e4e0;background:#fbfbfa;border-radius:0 0 10px 10px">
+     <span class="muted" style="font-size:13px">Публикация создаёт v5 и не затирает v4.</span>
+     <span style="display:flex;gap:8px"><span class="btn">Сбросить</span><span class="btn">Проверить</span><span class="btn">Сохранить черновик</span><span class="btn pri">Опубликовать</span></span></div>
+   </div>
+ </div>
+</div>`);
+</script>

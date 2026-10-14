@@ -1,0 +1,34 @@
+<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="mock.css"><script src="shell.js"></script>
+<script>
+const R = [
+ ['14 окт, 14:32','+375 •• ••• 41 08','Оплата и тарифы','Голос','Ответ из источников','ok','1:42'],
+ ['14 окт, 14:18','+375 •• ••• 77 20','Жалоба','Голос','Передан сотруднику','info','0:56'],
+ ['14 окт, 13:57','чат · web','Роуминг','Чат','Нет данных в источниках','warn','1:10'],
+ ['14 окт, 13:41','+375 •• ••• 05 63','Подключение','Голос','Ошибка распознавания','bad','0:19'],
+ ['14 окт, 13:22','+375 •• ••• 90 14','Оплата и тарифы','Голос','Ответ из источников','ok','2:05'],
+ ['14 окт, 12:49','чат · web','Баланс','Чат','Ответ из источников','ok','0:48'],
+ ['14 окт, 12:05','+375 •• ••• 33 71','Роуминг','Голос','Предложен чат','warn','1:31'],
+ ['13 окт, 18:40','+375 •• ••• 12 96','Оплата и тарифы','Голос','Ответ из источников','ok','1:12'],
+];
+shell('calls','Звонки',`
+<div class="page" style="max-width:none">
+ <div class="head"><div><h1>Звонки</h1><div class="sub">Номера скрыты. Полный транскрипт — только для роли support_supervisor.</div></div>
+  <div style="display:flex;gap:8px"><span class="btn">${icon('download')} Экспорт</span><span class="btn pri">${icon('phone')} Тестовый звонок</span></div></div>
+
+ <div class="card">
+  <div style="padding:14px 20px;display:flex;gap:10px;align-items:center;border-bottom:1px solid #e4e4e0">
+   <span class="input" style="width:300px">${icon('search')} Номер, тема или имя</span>
+   <span class="chip on">Итог: <b>Требуют внимания</b> ${icon('down').replace('<svg','<svg width=13 height=13 fill=none stroke=currentColor stroke-width=2')}</span>
+   <span class="chip">Маршрут ${icon('down').replace('<svg','<svg width=13 height=13 fill=none stroke=currentColor stroke-width=2')}</span>
+   <span class="chip">Канал ${icon('down').replace('<svg','<svg width=13 height=13 fill=none stroke=currentColor stroke-width=2')}</span>
+   <span class="chip">${icon('cal').replace('<svg','<svg width=13 height=13 fill=none stroke=currentColor stroke-width=2')} 7 дней</span>
+   <span style="margin-left:auto" class="muted">Сбросить фильтры</span>
+  </div>
+  <div style="padding:10px 20px;background:#fbfbfa;border-bottom:1px solid #e4e4e0;font-size:13px;color:#4a505c">Найдено <b class="num">318</b> · показано 1–8</div>
+  <table><thead><tr><th>Время</th><th>Абонент</th><th>Тема</th><th>Канал</th><th>Итог</th><th class="r">Длит.</th><th></th></tr></thead><tbody>
+  ${R.map((r,i)=>`<tr ${i===2?'style="background:#fafaf8"':''}><td class="num">${r[0]}</td><td class="mono">${r[1]}</td><td>${r[2]}</td><td class="muted">${r[3]}</td><td><span class="st"><span class="dot ${r[5]==='ok'?'':r[5]==='info'?'mute':r[5]}"></span>${r[4]}</span></td><td class="r num">${r[6]}</td><td class="r muted">›</td></tr>`).join('')}
+  </tbody></table>
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 20px;border-top:1px solid #e4e4e0;font-size:13px" class="muted"><span>Страница 1 из 40</span><span style="display:flex;gap:8px"><span class="btn sm">Назад</span><span class="btn sm">Далее</span></span></div>
+ </div>
+</div>`);
+</script>

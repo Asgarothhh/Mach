@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="ru"><meta charset="utf-8">
+<title>Аудит интерфейса: живой стенд, концепт</title>
+<link rel="stylesheet" href="mockups/mock.css">
+<style>
+@page { size: 1280px 720px; margin: 0; }
+html, body { width: 1280px; background: #fff; }
+body { font-size: 14px; min-height: 0; }
+.slide { width: 1280px; height: 720px; padding: 36px 48px 28px; position: relative; overflow: hidden; page-break-after: always; break-after: page; background: #fff; }
+.slide:last-child { page-break-after: auto; }
+.slide h2 { font-size: 26px; line-height: 32px; margin: 0 0 4px; font-weight: 650; letter-spacing: -.015em; }
+.slide .lead { color: #4a505c; font-size: 14.5px; margin-bottom: 14px; max-width: 1000px; }
+.pg { position: absolute; bottom: 14px; right: 48px; font-size: 12px; color: #6b7280; }
+.pg b { color: #16181d; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.cap { font-size: 12.5px; font-weight: 600; margin-bottom: 6px; display: flex; gap: 8px; align-items: center; }
+.cap .tag { font-weight: 600; }
+figure { margin: 0; position: relative; border: 1px solid #e4e4e0; border-radius: 8px; overflow: hidden; background: #fff; line-height: 0; }
+figure img { width: 100%; display: block; }
+.m { position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 99px; background: #e30611; color: #fff; font: 700 12px/22px "Inter"; text-align: center; box-shadow: 0 0 0 3px #fff, 0 1px 4px #0005; }
+.ok-badge { background: #0d7a4f !important; }
+ol.issues { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+ol.issues.cols { grid-template-columns: 1fr 1fr; gap: 7px 28px; }
+.slide .lead { margin-bottom: 10px; }
+ol.issues li { display: grid; grid-template-columns: 24px 1fr; gap: 10px; font-size: 13px; line-height: 1.4; }
+ol.issues li i { font-style: normal; width: 20px; height: 20px; border-radius: 99px; background: #e30611; color: #fff; font: 700 11.5px/20px "Inter"; text-align: center; margin-top: 1px; }
+ol.issues li b { font-weight: 600; }
+ol.issues li code, .code { font-family: "JetBrains Mono"; font-size: 11.5px; background: #f1f1ee; padding: 0 4px; border-radius: 4px; }
+.id { font: 600 11px "JetBrains Mono"; color: #6b7280; margin-right: 4px; }
+.p1 { color: #b42318; } .p2 { color: #9a5b00; }
+.stat { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; border: 1px solid #e4e4e0; border-radius: 10px; margin: 18px 0; }
+.stat div { padding: 14px 18px; border-left: 1px solid #e4e4e0; } .stat div:first-child { border-left: 0; }
+.stat b { display: block; font-size: 32px; line-height: 38px; letter-spacing: -.02em; }
+.stat span { font-size: 12.5px; color: #4a505c; line-height: 1.3; display: block; }
+table.t { font-size: 12.5px; } table.t th { padding: 7px 12px; } table.t td { height: auto; padding: 5px 12px; white-space: normal; vertical-align: top; }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.small { font-size: 12px; color: #6b7280; }
+.dark { background: #16181d; color: #fff; }
+.dark .lead { color: #c9ccd3; } .dark h2 { color: #fff; }
+</style>
+<body>
+<script>
+// m: [x, y, n] в пикселях исходного изображения
+function fig(src, w, h, marks = [], visH) {
+  const vh = visH || h;
+  return `<figure style="aspect-ratio:${w}/${vh}"><img src="${src}">${marks.map(([x, y, n]) => `<span class="m" style="left:${x / w * 100}%;top:${y / vh * 100}%">${n}</span>`).join('')}</figure>`;
+}
+function issues(list, cols) { return `<ol class="issues${cols ? ' cols' : ''}">${list.map(([n, id, p, t, d], i) => `<li><i>${n}</i><div><span class="id ${p === 'P1' ? 'p1' : 'p2'}">${id} · ${p}</span><b>${t}</b> ${d}</div></li>`).join('')}</ol>`; }
+let page = 0;
+function slide(inner, cls = '') { page++; document.body.insertAdjacentHTML('beforeend', `<section class="slide ${cls}">${inner}<div class="pg"><b>${page}</b> / 10</div></section>`); }
+const S = 'shots/', M = 'mockups/';
+
+/* 1. Титул */
+slide(`
+ <div style="display:flex;justify-content:space-between;align-items:center"><div class="brand" style="padding:0"><b>МТС</b><span>Голосовой помощник</span></div><span class="small">14 октября 2026 · ветка audit · концепт, не спека</span></div>
+ <h2 style="font-size:44px;line-height:52px;margin-top:70px;max-width:900px">Аудит админки и портала: что исправить и как это может выглядеть</h2>
+ <div class="lead" style="font-size:17px;margin-top:14px;max-width:820px">Проверен живой стенд app.194-146-38-78.sslip.io: 10 разделов админки, 8 публичных экранов, мобильная ширина 390 px. Скриншоты ниже сняты с этого стенда, а не с макетов.</div>
+ <div class="stat">
+  <div><b>6 из 10</b><span>разделов админки это заглушки «API не подключён»</span></div>
+  <div><b>1,1 : 1</b><span>контраст имени компании в сайдбаре (нужно ≥ 4,5)</span></div>
+  <div><b>54%</b><span>объявлений font-size (178 из 329) мельче 12 px</span></div>
+  <div><b>31</b><span>разное значение border-radius в global.css</span></div>
+  <div><b>0</b><span>@font-face: Inter объявлен, но нигде не подключён</span></div>
+ </div>
+ <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px;font-size:13.5px;color:#4a505c;margin-top:8px">
+  <div><b style="color:#16181d">Что в документе</b><br>Страницы 2–7: «сейчас» со скриншотом и пронумерованными проблемами рядом с концептом «как можно».</div>
+  <div><b style="color:#16181d">Связь с прошлым аудитом</b><br>Реестр AS-01…AS-40 из ветки audio построен по коду. Здесь новые находки с живого стенда получают ID LV-xx и ссылаются на AS-xx.</div>
+  <div><b style="color:#16181d">Что дальше</b><br>После согласования концепта: пошаговая спека для менее сильной модели (страница 10).</div>
+ </div>`);
+
+/* 2. Обзор */
+slide(`
+ <h2>Обзор админки: первый экран пустой и сломанный на вид</h2>
+ <div class="lead">Оператор открывает /admin и видит сырую ошибку сервера, невидимое имя компании и пустое поле. Концепт: итоги периода, что требует внимания, последние звонки.</div>
+ <div class="two">
+  <div><div class="cap"><span class="tag bad">Сейчас</span> /admin</div>${fig(S + 'overview.png', 1440, 900, [[84, 197, 1], [844, 245, 2], [844, 600, 3], [563, 80, 4], [1308, 31, 5]])}</div>
+  <div><div class="cap"><span class="tag ok">Концепт</span> те же данные, пример значений</div>${fig(M + 'overview.png', 1440, 971)}</div>
+ </div>
+ <div style="margin-top:12px">${issues([
+  [1, 'LV-01', 'P1', 'Имя компании не видно.', 'Цвет #f1f3f7 на белом, 1,1:1. Остаток тёмной темы в <span class="code">.track-admin-tenant-chip strong</span>.'],
+  [2, 'LV-02', 'P1', 'Сырая ошибка.', '«API вернул ошибку (404) для GET /api/v1/admin/analytics/calls». Нужен человеческий текст и «Повторить».'],
+  [3, 'LV-03', 'P2', 'Пустота вместо страницы.', 'Под ошибкой ничего нет. При ошибке показывать скелет макета, а не белое поле.'],
+  [4, 'LV-11', 'P2', 'Постоянная зелёная плашка про права.', 'Одинаково на каждой странице (AS-19).'],
+  [5, 'LV-11', 'P2', 'Аватар «VA» и «права задаёт сервис».', 'Выдуманный пользователь и бейдж без действия (AS-14).'],
+ ], 1)}</div>`);
+
+/* 3. Звонки */
+slide(`
+ <h2>История звонков: фильтры важнее данных</h2>
+ <div class="lead">Четыре карточки с нулями и шесть полей фильтров занимают две трети экрана. Таблицы нет, пока нет звонков, а когда будет, она начнётся ниже первого экрана.</div>
+ <div class="two">
+  <div><div class="cap"><span class="tag bad">Сейчас</span> /admin/calls</div>${fig(S + 'calls.png', 1440, 1058, [[422, 281, 1], [492, 478, 2], [816, 565, 3], [844, 767, 4]])}</div>
+  <div><div class="cap"><span class="tag ok">Концепт</span> одна панель: поиск, фильтры-чипы, таблица</div>${fig(M + 'calls.png', 1440, 900)}</div>
+ </div>
+ <div style="margin-top:12px">${issues([
+  [1, 'LV-08', 'P2', 'Ряд нулевых карточек.', 'Метрики без сравнения и действия (AS-07). Заменить строкой «Найдено N».'],
+  [2, 'LV-08', 'P2', 'Фильтры в отдельной панели с заголовком.', 'Шесть полей в две строки. Одна строка: поиск и чипы, остальное в «Ещё».'],
+  [3, 'LV-14', 'P2', 'Даты «mm/dd/yyyy» в русском интерфейсе.', 'Нужен формат дд.мм.гггг и быстрые периоды.'],
+  [4, 'LV-08', 'P2', 'Таблица скрыта под пустым состоянием.', 'Строки по 44 px, статус точкой, номер моноширинным, длительность справа.'],
+ ], 1)}</div>`);
+
+/* 4. Заглушки */
+slide(`
+ <h2>Шесть разделов из десяти ничего не показывают</h2>
+ <div class="lead">Проверка источников, Источники знаний, Синхронизация, Проверка качества, Аудит и Оценка моделей отвечают баннером «API не подключён». Пункты меню выглядят рабочими. Концепт: один шаблон «скоро», пункты в группе «Система».</div>
+ <div class="two" style="grid-template-columns:1.15fr .85fr">
+  <div><div class="cap"><span class="tag bad">Сейчас</span> 5 из 6 заглушек</div>
+   <div class="grid3" style="grid-template-columns:1fr 1fr 1fr">
+    ${[['knowledge', 'Источники знаний'], ['sync', 'Синхронизация'], ['quality', 'Проверка качества'], ['audit', 'Аудит'], ['evaluations', 'Оценка моделей'], ['rag', 'Проверка источников']].map(([f, t]) => `<div><div class="small" style="margin-bottom:3px">${t}</div><figure><img src="${S}${f}.png" style="height:150px;object-fit:cover;object-position:left top"></figure></div>`).join('')}
+   </div>
+   <div style="margin-top:14px">${issues([
+    [1, 'LV-03', 'P1', 'Половина навигации ведёт в пустоту.', 'Одинаковый баннер, одинаковый пустой экран, разные тексты («не подключён», «pending», «ещё не подключён»).'],
+    [2, 'LV-10', 'P2', 'Метка статуса на английском.', '«Audit API pending», «Evaluation API pending» в правом верхнем углу.'],
+    [3, 'LV-12', 'P2', 'Один шаблон не используется.', 'Каждая заглушка собрана по-своему; общий компонент убирает расхождения.'],
+   ])}</div></div>
+  <div><div class="cap"><span class="tag ok">Концепт</span> единый шаблон</div>${fig(M + 'stub.png', 1440, 900)}
+   <div class="small" style="margin-top:8px;line-height:1.4">Пункт в меню помечен «скоро» и серый. Страница честно говорит, что данных нет, и показывает контур будущего вида. Никаких выдуманных цифр.</div></div>
+ </div>`);
+
+/* 5. Сценарии */
+slide(`
+ <h2>Сценарии: форма на всю высоту и кнопки, похожие на отключённые</h2>
+ <div class="lead">Три вложенные панели, английские служебные подписи, главные действия внизу под прокруткой. Концепт: список слева, вкладки «Ответы / Маршрутизация / История», панель действий приклеена к низу.</div>
+ <div class="two" style="grid-template-columns:480px 1fr;gap:20px">
+  <div><div class="cap"><span class="tag bad">Сейчас</span> /admin/scenarios</div>${fig(S + 'scenarios.png', 1440, 1260, [[744, 140, 1], [463, 260, 2], [1314, 1125, 3], [1157, 1205, 4]])}</div>
+  <div><div class="cap"><span class="tag ok">Концепт</span></div><div style="width:560px">${fig(M + 'scenarios.png', 1440, 900)}</div>
+   <div style="margin-top:10px">${issues([
+    [1, 'AS-22', 'P2', 'Английские метки.', '«SCENARIO CONFIG», «Новый сценарий» рядом с «general_question».'],
+    [2, 'LV-09', 'P2', 'Пустой список с отдельной кнопкой «Создать сценарий».', 'Та же кнопка в шапке. Один вход.'],
+    [3, 'LV-09', 'P2', '«Опубликовать» бледно-розовая.', 'Это disabled с opacity .58, причина не названа. Показать причину рядом.'],
+    [4, 'AS-31', 'P2', 'Панели внутри панелей.', '«Версия» и «История» рядом, оба с рамками. Свести во вкладку.'],
+   ], 0)}</div></div>
+ </div>`);
+
+/* 6. Конфигурация и RAG */
+slide(`
+ <h2>Конфигурация и проверка источников: язык разработчика на экране владельца</h2>
+ <div class="lead">Тексты для людей, которые настраивают компанию, написаны для инженеров. Ниже «было → станет». Часть уже есть в AS-23, остальное найдено на живом стенде.</div>
+ <div class="two" style="gap:20px">
+  <div><div class="cap"><span class="tag bad">Сейчас</span> /admin/configuration</div>${fig(S + 'config.png', 1440, 260, [[548, 205, 1], [1125, 120, 2], [330, 52, 3]])}</div>
+  <div><div class="cap"><span class="tag bad">Сейчас</span> /admin/rag</div>${fig(S + 'rag.png', 1440, 600, [[323, 126, 4], [300, 281, 5], [408, 478, 6], [295, 566, 7]])}</div>
+ </div>
+ <table class="t" style="margin-top:12px"><thead><tr><th style="width:26px">№</th><th style="width:48%">Сейчас на экране</th><th>Станет</th></tr></thead><tbody>
+  <tr><td>1</td><td><span class="code">data_collection deny · require ZDR true · Unknown route fail closed</span></td><td>«Сбор данных внешним сервисом: запрещён». Детали в блоке «Для разработчика».</td></tr>
+  <tr><td>2</td><td><span class="code">guardrails-v1</span>, <span class="code">read-only RAG</span>, <span class="code">masked / minimized</span></td><td>«Версия правил: v1», «Доступ помощника: только чтение», «Данные скрываются».</td></tr>
+  <tr><td>3</td><td>«Temperature», «Max tokens», «Read-only demo» и текст 9–10 px</td><td>«Креативность ответа», «Длина ответа», «Только просмотр». Текст от 13 px.</td></tr>
+  <tr><td>4</td><td>«Retrieval diagnostics API не подключён»</td><td>«Диагностика поиска пока недоступна».</td></tr>
+  <tr><td>5</td><td>«Redacted question · финальная реплика»</td><td>«Вопрос звонящего (персональные данные скрыты)».</td></tr>
+  <tr><td>6</td><td>Розовая кнопка «Показать retrieval fixture»</td><td>«Проверить запрос», неактивна с причиной рядом.</td></tr>
+  <tr><td>7</td><td>«30 dense + 30 sparse → RRF → rerank top 20»</td><td>«Найденные фрагменты». Схема поиска в раскрывающемся блоке.</td></tr>
+ </tbody></table>`);
+
+/* 7. Публичная часть */
+slide(`
+ <h2>Портал: шапка не помещается на 1440 и налезает на заголовок на телефоне</h2>
+ <div class="lead">Горизонтальная прокрутка на всех публичных страницах (снято в Electron с запасным шрифтом, в Chrome с Inter ширина может быть чуть меньше, но запаса у шапки нет). На 390 px шапка накладывается на заголовок.</div>
+ <div class="two" style="grid-template-columns:1fr 300px;gap:20px">
+  <div><div class="cap"><span class="tag bad">Сейчас</span> 1440 px, главная</div>${fig(S + 'public_home.png', 1440, 700, [[1392, 51, 1], [1322, 302, 2], [1139, 464, 3], [394, 408, 4], [176, 620, 5]], 660)}</div>
+  <div><div class="cap"><span class="tag bad">Сейчас</span> 390 px</div>${fig(S + 'mobile_home.png', 390, 640, [[190, 127, 6]], 380)}</div>
+ </div>
+ <div style="margin-top:12px">${issues([
+  [1, 'LV-04', 'P1', 'Кнопка «Голосовой помощник» обрезана.', 'Шапка 104 px и 10 элементов в двух рядах (AS-33). Оставить бренд, 4 раздела, профиль, меню «Ещё».'],
+  [2, 'AS-01', 'P2', 'Плавающий «5 мин цель настройки».', 'Декор без данных.'],
+  [3, 'AS-02', 'P2', 'Волна из 41 столбика.', 'Не связана со звуком. Заменить маскотом из SPEC_MASCOT_CUBE_UI_CHANGE.'],
+  [4, 'AS-15', 'P2', 'Лозунг «Ни один важный звонок не потеряется».', 'Заменить на факт: «Сегодня: 12 звонков, 3 у сотрудника».'],
+  [5, 'AS-16', 'P2', 'Три «гарантии» мелким шрифтом.', 'Убрать, оставить одну оговорку по месту.'],
+  [6, 'LV-05', 'P1', 'На телефоне навигация поверх заголовка.', 'Шапка не складывается: нужен компактный режим (логотип + меню).'],
+ ], 1)}</div>`);
+
+/* 8. Токены */
+slide(`
+ <h2>Система: шесть решений, которые уберут «шаблонность» целиком</h2>
+ <div class="lead">Концепт построен на этих токенах. Они проверены по контрасту. Красный МТС остаётся единственным акцентом: основная кнопка и активный пункт.</div>
+ <div style="display:grid;grid-template-columns:860px 1fr;gap:24px;align-items:start">${fig(M + 'tokens.png', 1440, 900, [], 830)}
+ <div style="font-size:13px;line-height:1.5;color:#4a505c"><b style="color:#16181d">LV-06.</b> Inter не загружается: нужен <span class="code">@font-face</span> (woff2, latin и cyrillic, около 150 КБ), а не ссылка на системный шрифт.<br><br><b style="color:#16181d">LV-07.</b> Серые #9299a4 и #8a909b дают 2,9:1. Нижняя граница нового набора: 4,8:1.<br><br><b style="color:#16181d">LV-13.</b> Два радиуса вместо 31 и шаг 4 px.<br><br><b style="color:#16181d">Чем это не слоп.</b> Нет градиентов, стекла, теней у карточек, иконок в цветных квадратах и лозунгов. Есть плотная таблица, числа с tabular и один акцентный цвет.</div></div>
+</div>`);
+
+/* 9. До/после по принципам */
+slide(`
+ <h2>Принципы, по которым сделан концепт</h2>
+ <div class="lead">Это правила для исполнителя. Они согласованы с принципами из SPEC_INTERFACE_ANTI_SLOP_AUDIT.md (раздел 3), но конкретнее по плотности и цвету.</div>
+ <table class="t" style="font-size:13.5px"><thead><tr><th style="width:220px">Принцип</th><th>Как проявляется на экране</th><th style="width:210px">Закрывает</th></tr></thead><tbody>
+  <tr><td><b>Данные, а не декор</b></td><td>Волна, орбиты, плавающие цифры, цветные точки с ореолом удаляются. Остаются график, таблица, статус.</td><td>AS-01…AS-06</td></tr>
+  <tr><td><b>Одна плотность</b></td><td>Базовый текст 14 px, минимум 13 px. Строки таблиц 44 px. Метрики одной полосой, а не четырьмя карточками.</td><td>AS-07, AS-11, LV-07, LV-08</td></tr>
+  <tr><td><b>Красный как сигнал</b></td><td>Красный: основная кнопка, активный пункт, ошибка. Все остальные акценты нейтральные. Тени только у меню и модалок.</td><td>AS-03, AS-13, LV-09</td></tr>
+  <tr><td><b>Два радиуса</b></td><td>6 px для кнопок и полей, 10 px для карточек. Пилюли только для тегов и чипов.</td><td>AS-10, LV-13</td></tr>
+  <tr><td><b>Честные пустые состояния</b></td><td>Ошибка API: что случилось, что делать, кнопка. Нет раздела: «скоро» и контур будущего вида. Выдуманных чисел нет.</td><td>LV-02, LV-03</td></tr>
+  <tr><td><b>Один текст на одну мысль</b></td><td>Предупреждение один раз на экран. Без тире. Английские метки заменены. Жаргон в «Для разработчика».</td><td>AS-18…AS-25, LV-10, LV-11</td></tr>
+  <tr><td><b>Адаптивность по умолчанию</b></td><td>Проверка на 1440, 1024 и 390 px. Шапка собирается в меню. Таблицы скроллятся внутри карточки.</td><td>LV-04, LV-05</td></tr>
+ </tbody></table>
+ <div class="small" style="margin-top:14px">Что не меняется: демо-маркировка, разделение браузерного канала и телефонии, права доступа, API-контракты (AS, раздел 10).</div>`);
+
+/* 10. Реестр + дальше */
+slide(`
+ <h2>Реестр новых находок и следующий шаг</h2>
+ <div class="two" style="grid-template-columns:1.25fr .75fr">
+ <table class="t" style="font-size:12px"><thead><tr><th>ID</th><th>P</th><th>Находка</th><th>Где</th></tr></thead><tbody>
+  <tr><td style='white-space:nowrap'>LV-01</td><td class="p1">P1</td><td>Имя компании в сайдбаре невидимо, 1,1:1</td><td class="code">global.css:928</td></tr>
+  <tr><td style='white-space:nowrap'>LV-02</td><td class="p1">P1</td><td>Сырая ошибка 404 на обзоре, пустая страница</td><td class="code">AdminOverviewPage</td></tr>
+  <tr><td style='white-space:nowrap'>LV-03</td><td class="p1">P1</td><td>6 из 10 разделов заглушки, меню выглядит рабочим</td><td class="code">AdminLayout, 6 страниц</td></tr>
+  <tr><td style='white-space:nowrap'>LV-04</td><td class="p1">P1</td><td>Публичная шапка переполняется на 1440</td><td class="code">.public-header*</td></tr>
+  <tr><td style='white-space:nowrap'>LV-05</td><td class="p1">P1</td><td>Шапка налезает на заголовок на 390</td><td class="code">@media 429–441</td></tr>
+  <tr><td style='white-space:nowrap'>LV-06</td><td class="p2">P2</td><td>Inter объявлен, @font-face нет</td><td class="code">tokens.css, index.html</td></tr>
+  <tr><td style='white-space:nowrap'>LV-07</td><td class="p2">P2</td><td>178/329 font-size ≤ 11 px, серые 2,9:1</td><td class="code">global.css</td></tr>
+  <tr><td style='white-space:nowrap'>LV-08</td><td class="p2">P2</td><td>Фильтры и нулевые KPI вытесняют таблицу</td><td class="code">CallHistoryPage</td></tr>
+  <tr><td style='white-space:nowrap'>LV-09</td><td class="p2">P2</td><td>Disabled-кнопки без причины, выглядят как «блёклые»</td><td class="code">Scenario, Ingestion, Rag</td></tr>
+  <tr><td style='white-space:nowrap'>LV-10</td><td class="p2">P2</td><td>Английские статусы и жаргон: «API pending», «RRF»</td><td class="code">5 страниц админки</td></tr>
+  <tr><td style='white-space:nowrap'>LV-11</td><td class="p2">P2</td><td>Постоянная плашка про права, аватар «VA»</td><td class="code">AdminLayout</td></tr>
+  <tr><td style='white-space:nowrap'>LV-12</td><td class="p2">P2</td><td>/admin/sessions и /admin/calls дублируют друг друга, два заголовка продукта</td><td class="code">AdminLayout, App.tsx</td></tr>
+  <tr><td style='white-space:nowrap'>LV-13</td><td class="p2">P2</td><td>31 радиус, нет шкалы отступов</td><td class="code">global.css</td></tr>
+  <tr><td style='white-space:nowrap'>LV-14</td><td class="p2">P2</td><td>Поле даты «mm/dd/yyyy» в русском UI</td><td class="code">CallHistoryPage</td></tr>
+ </tbody></table>
+ <div>
+  <div style="border:1px solid #16181d;border-radius:10px;padding:18px">
+   <b style="font-size:15px">Следующий шаг: спека для исполнителя</b>
+   <ol style="padding-left:18px;margin:10px 0 0;font-size:13px;line-height:1.5;color:#4a505c">
+    <li>Вы согласуете концепт (что оставить, что нет).</li>
+    <li>Спека делится на малые задачи по 1–3 файла: токены и шрифт, оболочка админки, шаблон пустых состояний, таблица звонков, сценарии, шапка портала.</li>
+    <li>В каждой задаче: файл, текущий код, целевой код, проверка (скриншот 1440 и 390, <span class="code">npm run test</span>).</li>
+    <li>Порядок: P1 из LV и AS, затем токены одним PR.</li>
+   </ol></div>
+  <div class="small" style="margin-top:14px;line-height:1.5"><b style="color:#16181d">Ограничения проверки.</b> Снято в Electron на 1440 и 390 px без входа в систему. Маршруты /admin/* открывались прямой подменой адреса. API на стенде отвечает 404 для аналитики, поэтому реальные таблицы и графики не наблюдались: данные в концепте примерные. Мобильная версия админки проверена только на обзоре.</div>
+ </div></div>`);
+</script>
+</body></html>

@@ -1,0 +1,27 @@
+<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="mock.css"><script src="shell.js"></script>
+<script>
+const sk = (w)=>`<div class="skel" style="width:${w}"></div>`;
+shell('sync','Синхронизация',`
+<div class="page">
+ <div class="head"><div><h1>Синхронизация знаний <span class="tag" style="vertical-align:middle;margin-left:8px">Скоро</span></h1><div class="sub">Проверка новых материалов и безопасная публикация индекса.</div></div>
+  <div style="display:flex;gap:8px"><span class="btn" style="opacity:.5">${icon('play')} Запустить dry-run</span></div></div>
+
+ <div class="card" style="padding:20px 24px;display:flex;gap:20px;align-items:flex-start;border-color:#cfd9ee;background:#f4f8fe">
+  <span style="color:#1d5fbf;margin-top:2px">${icon('lock').replace('<svg','<svg width=20 height=20 fill=none stroke=currentColor stroke-width=1.7')}</span>
+  <div style="flex:1"><div style="font-weight:600">Раздел ждёт подключения Ingestion API</div>
+  <div style="color:#4a505c;margin-top:2px">Данных здесь нет и не будет, пока сервис не подключён. Мы не показываем выдуманные цифры.</div></div>
+  <div style="font-size:13px;color:#4a505c;text-align:right">Статус<br><b style="color:#16181d">Не подключено</b></div>
+ </div>
+
+ <div style="font-size:12.5px;color:#6b7280;margin:24px 0 8px;font-weight:600">Так это будет выглядеть</div>
+ <div class="card" style="opacity:.95">
+  <div class="kpis" style="border:0;border-bottom:1px solid #e4e4e0;border-radius:0">
+   ${['Последний запуск','Добавлено','Изменено','Ошибки'].map(l=>`<div class="kpi"><div class="l">${l}</div><div class="v" style="color:#c9c9c4">—</div></div>`).join('')}
+  </div>
+  <table><thead><tr><th>Запуск</th><th>Источник</th><th>Итог</th><th class="r">Изменений</th></tr></thead><tbody>
+   ${[1,2,3].map(()=>`<tr><td>${sk('120px')}</td><td>${sk('220px')}</td><td>${sk('90px')}</td><td class="r"><div class="skel" style="width:40px;margin-left:auto"></div></td></tr>`).join('')}
+  </tbody></table>
+ </div>
+ <div style="margin-top:20px;font-size:13.5px;color:#4a505c">Нужен доступ раньше? Напишите администратору платформы — права на раздел выдаёт роль <span class="mono">knowledge_editor</span>.</div>
+</div>`);
+</script>

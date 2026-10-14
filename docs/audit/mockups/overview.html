@@ -1,0 +1,42 @@
+<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="mock.css"><script src="shell.js"></script>
+<script>
+const bars = [18,22,19,27,31,12,9,24,29,33,28,35,14,11].map((v,i)=>{const h=v*3.4;return `<rect x="${i*40+6}" y="${130-h}" width="26" height="${h}" rx="3" fill="${i===11?'#e30611':'#d9d9d4'}"/>`}).join('');
+const rows = [
+ ['14:32','Обычный запрос','Оплата и тарифы','Ответ из источников','ok','1:42','2.1 с'],
+ ['14:18','Нужна связь с человеком','Жалоба','Передан сотруднику','info','0:56','1.8 с'],
+ ['13:57','Нет данных в источниках','Роуминг','Предложен чат','warn','1:10','2.4 с'],
+ ['13:41','Ошибка распознавания','Подключение','Не завершён','bad','0:19','—'],
+ ['13:22','Обычный запрос','Оплата и тарифы','Ответ из источников','ok','2:05','2.0 с'],
+];
+const stl={ok:'ok',info:'info',warn:'warn',bad:'bad'};
+shell('overview','Обзор',`
+<div class="page">
+ <div class="head"><div><h1>Обзор</h1><div class="sub">Последние 14 дней · Acme IT</div></div>
+  <div style="display:flex;gap:8px"><span class="btn">${icon('cal')} 14 дней ${icon('down')}</span><span class="btn">${icon('refresh')} Обновить</span><span class="btn pri">${icon('phone')} Тестовый звонок</span></div></div>
+
+ <div class="kpis">
+  <div class="kpi"><div class="l">Звонков</div><div class="v num">318</div><div class="d up">+12% к прошлым 14 дням</div></div>
+  <div class="kpi"><div class="l">Решено без сотрудника</div><div class="v num">71%</div><div class="d up">+3 п.п.</div></div>
+  <div class="kpi"><div class="l">Передано сотруднику</div><div class="v num">19%</div><div class="d down">+2 п.п.</div></div>
+  <div class="kpi"><div class="l">Время до ответа, p95</div><div class="v num">2.3 с</div><div class="d">цель ≤ 3 с</div></div>
+ </div>
+
+ <div style="display:grid;grid-template-columns:1fr 340px;gap:16px;margin-top:16px">
+  <div class="card"><header><h2>Звонки по дням</h2><span class="meta">пример данных</span></header>
+   <div style="padding:20px 20px 12px"><svg width="100%" viewBox="0 0 560 150" style="display:block"><g stroke="#e4e4e0"><line x1="0" x2="560" y1="130" y2="130"/><line x1="0" x2="560" y1="90" y2="90" stroke-dasharray="3 4"/><line x1="0" x2="560" y1="50" y2="50" stroke-dasharray="3 4"/></g>${bars}
+   <g font-size="10" fill="#6b7280"><text x="2" y="48">30</text><text x="2" y="88">15</text></g></svg>
+   <div style="display:flex;justify-content:space-between;color:#6b7280;font-size:12.5px;margin-top:6px"><span>1 окт</span><span>14 окт</span></div></div></div>
+
+  <div class="card"><header><h2>Требует внимания</h2><span class="tag bad">3</span></header>
+   <div style="padding:6px 0">
+    ${[['bad','Ошибки распознавания','4 звонка за сутки'],['warn','Нет данных в источниках','«Роуминг» — 9 вопросов'],['warn','Источник устарел','Тарифы, 21 день']].map(([c,t,s])=>`<div style="display:flex;gap:12px;padding:12px 20px;border-bottom:1px solid #e4e4e0"><span class="dot ${c}" style="margin-top:7px"></span><div style="flex:1"><div style="font-weight:600">${t}</div><div class="muted" style="font-size:13px">${s}</div></div><span style="color:#6b7280">${icon('arrow').replace('<svg','<svg width=16 height=16 fill=none stroke=currentColor stroke-width=1.7')}</span></div>`).join('')}
+    <div style="padding:12px 20px;font-size:13px;color:#4a505c">Все проблемы → Качество</div>
+   </div></div>
+ </div>
+
+ <div class="card" style="margin-top:16px"><header><h2>Последние звонки</h2><span class="meta" style="color:#b8000b;font-weight:500">Все звонки →</span></header>
+  <table><thead><tr><th>Время</th><th>Тема</th><th>Маршрут</th><th>Итог</th><th class="r">Длит.</th><th class="r">Ответ</th></tr></thead><tbody>
+  ${rows.map(r=>`<tr><td class="num muted">${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td><span class="tag ${r[4]}">${r[3]}</span></td><td class="r num">${r[5]}</td><td class="r num">${r[6]}</td></tr>`).join('')}
+  </tbody></table></div>
+</div>`);
+</script>
