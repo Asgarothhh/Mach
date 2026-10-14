@@ -1,6 +1,6 @@
 import { apiRequest } from '../../../shared/api/http';
-import { withDemoFallback } from '../../../shared/api/stage1Fallback';
-import { env } from '../../../shared/config/env';
+import { withDemoFallback, withDemoFallbackSource, type DemoFallbackSource } from '../../../shared/api/stage1Fallback';
+import { env, resolveSessionTenantId } from '../../../shared/config/env';
 import type { OnboardingValidation, TenantCreateInput, TenantProfile, TestCallResult } from '../../../shared/types/track1';
 import { addDemoTestCall } from '../../calls/data/demoCalls';
 import { demoScenarioStore } from '../../scenarios/data/demoScenarios';
@@ -19,10 +19,9 @@ function createDemoTenant(input: TenantCreateInput): TenantProfile {
   return profile;
 }
 
-export async function createTenant(input: TenantCreateInput): Promise<TenantProfile> {
-  if (env.demoMode) return createDemoTenant(input);
-  // Payload shape is provisional until backend OpenAPI/Pydantic schema is published.
-  return withDemoFallback(
+export async function createTenant(input: TenantCreateInput): Promise<{ value: TenantProfile; source: DemoFallbackSource }> {
+  if (env.demoMode) return { value: createDemoTenant(input), source: 'local' };
+  return withDemoFallbackSource(
     () => apiRequest<TenantProfile>('/tenants', { method: 'POST', body: input }),
     () => createDemoTenant(input),
   );
@@ -42,10 +41,9 @@ function updateDemoTenantProfile(tenantId: string, input: TenantCreateInput): Te
   return updated;
 }
 
-export async function updateTenantProfile(tenantId: string, input: TenantCreateInput): Promise<TenantProfile> {
-  if (env.demoMode) return updateDemoTenantProfile(tenantId, input);
-  // Tenant profile update route is inferred for the Track 1 wizard and must be confirmed in backend OpenAPI.
-  return withDemoFallback(
+export async function updateTenantProfile(tenantId: string, input: TenantCreateInput): Promise<{ value: TenantProfile; source: DemoFallbackSource }> {
+  if (env.demoMode) return { value: updateDemoTenantProfile(tenantId, input), source: 'local' };
+  return withDemoFallbackSource(
     () => apiRequest<TenantProfile>(`/tenants/${encodeURIComponent(tenantId)}`, { method: 'PATCH', body: input }),
     () => updateDemoTenantProfile(tenantId, input),
   );
@@ -83,10 +81,33 @@ function startDemoTenantTestCall(tenantId: string, adapter: 'mock' | 'sip', disp
   return { call_id: call.call_id, session_id: call.session_id, status: 'started', adapter, is_mock: true, message: 'Синтетический тестовый вызов создан. Реальная телефония не подключалась.' };
 }
 
-export async function startTenantTestCall(tenantId: string, adapter: 'mock' | 'sip', displayName: string): Promise<TestCallResult> {
-  if (env.demoMode) return startDemoTenantTestCall(tenantId, adapter, displayName);
-  return withDemoFallback(
+async function startLiveFallbackSession(tenantId: string): Promise<TestCallResult> {
+  const created = await apiRequest<{ session_id?: string }>('/sessions', {
+    method: 'POST',
+    body: { tenant_id: resolveSessionTenantId(tenantId), channel: 'mock', language: 'ru' },
+  });
+  const sessionId = created.session_id;
+  if (!sessionId) throw new Error('Backend не вернул session_id при создании тестовой сессии.');
+  return {
+    call_id: sessionId,
+    session_id: sessionId,
+    status: 'started',
+    adapter: 'mock',
+    is_mock: true,
+    message: 'Создана текстовая сессия на сервере. SIP на этом стенде недоступен.',
+  };
+}
+
+export async function startTenantTestCall(tenantId: string, adapter: 'mock' | 'sip', displayName: string): Promise<{ value: TestCallResult; source: DemoFallbackSource }> {
+  if (adapter === 'sip') {
+    return {
+      value: { call_id: '', session_id: '', status: 'failed', adapter, is_mock: true, message: 'SIP недоступен на этом стенде.' },
+      source: 'local',
+    };
+  }
+  if (env.demoMode) return { value: startDemoTenantTestCall(tenantId, adapter, displayName), source: 'local' };
+  return withDemoFallbackSource(
     () => apiRequest<TestCallResult>(`/tenants/${encodeURIComponent(tenantId)}/test-calls`, { method: 'POST', body: { adapter } }),
-    () => startDemoTenantTestCall(tenantId, adapter, displayName),
+    () => startLiveFallbackSession(tenantId),
   );
 }

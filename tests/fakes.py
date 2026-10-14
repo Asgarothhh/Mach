@@ -3,9 +3,16 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
+from datetime import UTC, datetime
 
 from app.models.database import RetrievalEvent, Turn
+from app.models.store import StoredSession, StoredTurn
+from app.orchestrator.state_machine import SessionState
+
+
+def _utcnow() -> datetime:
+    return datetime.now(UTC)
 
 
 class InMemoryTurnStore:
@@ -14,6 +21,7 @@ class InMemoryTurnStore:
         self.sessions: list[dict] = []
         self.turns: list[Turn] = []
         self.retrieval_events: list[RetrievalEvent] = []
+        self.audit_events: list[dict] = []
         self.fail_record = False
         self.fail_ping = False
 
@@ -31,6 +39,9 @@ class InMemoryTurnStore:
                 "tenant_id": tenant_id,
                 "channel": channel,
                 "language": language,
+                "status": SessionState.CREATED,
+                "created_at": _utcnow(),
+                "ended_at": None,
             }
         )
 
@@ -45,6 +56,110 @@ class InMemoryTurnStore:
 
     async def ping(self) -> bool:
         return not self.fail_ping
+
+    def _find_session(self, session_id: str) -> dict | None:
+        for row in self.sessions:
+            if row["session_id"] == session_id:
+                return row
+        return None
+
+    def _turn_count(self, session_id: str) -> int:
+        return sum(1 for turn in self.turns if turn.session_id == session_id)
+
+    def _to_stored(self, row: dict) -> StoredSession:
+        status = row.get("status", SessionState.CREATED)
+        if not isinstance(status, SessionState):
+            status = SessionState(str(status))
+        return StoredSession(
+            session_id=row["session_id"],
+            tenant_id=row["tenant_id"],
+            status=status,
+            channel=row["channel"],
+            language=row.get("language") or "ru",
+            created_at=row["created_at"],
+            ended_at=row.get("ended_at"),
+            turn_count=self._turn_count(row["session_id"]),
+        )
+
+    async def update_session_status(self, session_id: str, status: SessionState) -> bool:
+        row = self._find_session(session_id)
+        if row is None:
+            return False
+        current = row.get("status", SessionState.CREATED)
+        if not isinstance(current, SessionState):
+            current = SessionState(str(current))
+        if current is SessionState.CLOSED and status is not SessionState.CLOSED:
+            return False
+        row["status"] = status
+        if status is SessionState.CLOSED and row.get("ended_at") is None:
+            row["ended_at"] = _utcnow()
+        return True
+
+    async def get_session(self, session_id: str) -> StoredSession | None:
+        row = self._find_session(session_id)
+        return None if row is None else self._to_stored(row)
+
+    async def list_sessions(
+        self,
+        *,
+        tenant_ids: Sequence[str],
+        status: str | None,
+        limit: int,
+        offset: int,
+    ) -> list[StoredSession]:
+        allowed = set(tenant_ids)
+        rows = [row for row in self.sessions if row["tenant_id"] in allowed]
+        if status:
+            rows = [
+                row
+                for row in rows
+                if str(row.get("status", SessionState.CREATED)) == str(status)
+            ]
+        rows = sorted(rows, key=lambda item: item["created_at"], reverse=True)
+        sliced = rows[offset : offset + limit]
+        return [self._to_stored(row) for row in sliced]
+
+    async def list_turns(self, session_id: str) -> list[StoredTurn]:
+        turns = [turn for turn in self.turns if turn.session_id == session_id]
+        turns.sort(key=lambda item: item.started_at or datetime.min.replace(tzinfo=UTC))
+        return [
+            StoredTurn(
+                turn_id=turn.turn_id,
+                sequence_no=str(turn.sequence_no),
+                started_at=turn.started_at or _utcnow(),
+                redacted_text=turn.redacted_text,
+                intent=turn.intent,
+            )
+            for turn in turns
+        ]
+
+    async def update_turn_redacted_text(
+        self, session_id: str, turn_id: str, redacted_text: str
+    ) -> StoredTurn | None:
+        for turn in self.turns:
+            if turn.turn_id == turn_id and turn.session_id == session_id:
+                turn.redacted_text = redacted_text
+                return StoredTurn(
+                    turn_id=turn.turn_id,
+                    sequence_no=str(turn.sequence_no),
+                    started_at=turn.started_at,
+                    redacted_text=turn.redacted_text,
+                    intent=turn.intent,
+                )
+        return None
+
+    async def record_audit(
+        self, *, tenant_id: str, actor: str, action: str, details: dict
+    ) -> None:
+        self.audit_events.append(
+            {
+                "tenant_id": tenant_id,
+                "actor": actor,
+                "action": action,
+                "details": details,
+                "timestamp": _utcnow(),
+            }
+        )
 
 
 class SpyRetriever:

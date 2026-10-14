@@ -30,19 +30,21 @@ test('only a missing route (404) triggers the demo fallback', async () => {
 
 test('onboarding screen falls back to demo fixtures on a missing route', async () => {
   const source = await read('src/features/onboarding/services/onboarding.service.ts');
+  assert.match(source, /withDemoFallbackSource\(/);
   assert.match(source, /withDemoFallback\(/);
   // Explicit demo mode still short-circuits before any API call.
-  assert.match(source, /if \(env\.demoMode\) return createDemoTenant\(input\)/);
+  assert.match(source, /if \(env\.demoMode\) return \{ value: createDemoTenant\(input\), source: 'local' \}/);
   assert.match(source, /if \(env\.demoMode\) return listDemoTenants\(\)/);
   // The fallback reuses the same fixture implementation as demo mode.
   assert.match(source, /\(\) => createDemoTenant\(input\)/);
   assert.match(source, /\(\) => validateDemoOnboarding\(displayName, greeting, elapsedMs\)/);
+  assert.match(source, /startLiveFallbackSession/);
 });
 
 test('scenarios screen falls back to demo fixtures on a missing route', async () => {
   const source = await read('src/features/scenarios/services/scenarios.service.ts');
-  assert.match(source, /withDemoFallback\(/);
-  assert.match(source, /if \(env\.demoMode\) return listDemoScenarios\(tenantId\)/);
+  assert.match(source, /withDemoFallbackSource\(/);
+  assert.match(source, /if \(env\.demoMode\) return \{ value: listDemoScenarios\(tenantId\), source: 'local' \}/);
   assert.match(source, /\(\) => saveDemoScenarioDraft\(tenantId, input, scenarioId\)/);
   assert.match(source, /\(\) => publishDemoScenario\(scenario\)/);
   assert.match(source, /\(\) => rollbackDemoScenario\(tenantId, scenarioId, revisionId\)/);

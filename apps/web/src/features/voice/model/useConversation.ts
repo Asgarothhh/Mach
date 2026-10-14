@@ -29,10 +29,11 @@ export function useConversation() {
       const existing = index >= 0 ? current[index] : undefined;
       // Final revisions cannot be overwritten by a late partial event.
       if (existing?.final && !event.final) return current;
+      const citations = event.citations?.length ? event.citations : existing?.citations;
       const next: ConversationMessage = {
         id: messageId, turnId: event.turnId, role: event.role, text: event.text,
         createdAt: existing?.createdAt ?? new Date().toISOString(), final: event.final,
-        origin: 'live',
+        origin: 'live', interrupted: event.interrupted, citations,
       };
       if (index < 0) return [...current, next];
       return current.map((message, messageIndex) => messageIndex === index ? next : message);

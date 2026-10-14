@@ -40,8 +40,8 @@
 
 /* Public customer-facing shell */
 .public-shell { min-height: 100vh; display: flex; flex-direction: column; background: #fff; }
-.public-header { position: relative; z-index: 5; flex: 0 0 auto; height: 104px; border-bottom: 1px solid var(--color-line); background: #fff; }
-.public-header__inner { display: flex; align-items: center; justify-content: space-between; width: min(var(--content-width), calc(100% - 64px)); height: 100%; margin: 0 auto; gap: 24px; }
+.public-header { position: relative; z-index: 5; flex: 0 0 auto; height: auto; border-bottom: 1px solid var(--color-line); background: #fff; }
+.public-header__inner { display: flex; align-items: center; justify-content: space-between; width: min(var(--content-width), calc(100% - 64px)); min-width: 0; min-height: 72px; margin: 0 auto; gap: 24px; padding: 10px 0; }
 .public-header__actions { display: flex; align-items: center; gap: 26px; }
 .brand { display: inline-flex; align-items: center; gap: 25px; color: var(--color-text); flex: 0 0 auto; }
 .brand__mark { width: 144px; height: 58px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; border-radius: 12px; color: #fff; background: var(--color-brand); font-size: 35px; font-weight: 850; letter-spacing: -1.9px; line-height: 1; }
@@ -438,7 +438,7 @@
   .admin-panel { padding: 17px; }
 }
 @media (max-width: 820px) {
-  .public-header { height: 84px; }
+  .public-header { height: auto; }
   .public-header__inner, .public-main, .public-footer { width: calc(100% - 32px); }
   .public-header__actions { gap: 12px; }
   .brand { gap: 12px; }
@@ -491,13 +491,13 @@
   .pipeline-steps { grid-template-columns: repeat(3, minmax(0,1fr)); row-gap: 18px; }
 }
 @media (max-width: 520px) {
-  .public-header { height: 72px; }
+  .public-header { height: auto; }
   .public-header__inner, .public-main, .public-footer { width: calc(100% - 24px); }
   .public-header__inner { gap: 9px; }
   .brand { gap: 9px; }
   .brand__mark { width: 72px; height: 39px; gap: 3px; border-radius: 7px; font-size: 22px; letter-spacing: -1px; }
   .brand__drop { width: 12px; height: 18px; }
-  .brand__title { max-width: 89px; font-size: 12px; }
+  .brand__title { display: none; }
   .public-header__actions { gap: 7px; }
   .demo-badge { min-height: 25px; padding: 0 8px; font-size: 10px; }
   .locale-switch { padding: 3px; border-radius: 9px; }
@@ -606,7 +606,8 @@
 /* isolated while the UI is migrated.                                         */
 /* -------------------------------------------------------------------------- */
 .public-header--track1 .public-header__inner { gap: 24px; }
-.track-header-brand { display: flex; align-items: center; gap: 14px; flex: 0 0 auto; }
+.track-header-brand { display: flex; align-items: center; gap: 14px; flex: 0 0 auto; min-width: 0; }
+.track-main-nav, .public-header__actions, .brand { min-width: 0; }
 .track-header-product { padding-left: 14px; border-left: 1px solid var(--color-line); color: var(--color-text); font-size: 13px; font-weight: 650; white-space: nowrap; }
 .track-main-nav { display: flex; align-items: center; gap: 4px; margin-left: auto; }
 .track-main-nav__link { display: inline-flex; align-items: center; min-height: 38px; padding: 0 12px; border-radius: 11px; color: var(--color-text-secondary); font-size: 12px; font-weight: 600; transition: color .15s ease, background .15s ease; white-space: nowrap; }
@@ -933,6 +934,19 @@
 .track-legacy-source-list li:last-child { border-bottom: 0; }
 .track-legacy-source-list a { display: inline-flex; align-items: center; gap: 3px; flex: 0 0 auto; color: var(--color-brand); font-size: 9px; }
 
+@media (max-width: 1456px) {
+  .brand__title { display: none; }
+  .support-link { display: none; }
+  .public-header--track1 { height: auto; }
+  .public-header--track1 .public-header__inner { flex-wrap: wrap; height: auto; }
+  .public-header--track1 .public-header__actions { margin-left: auto; }
+  .track-main-nav { order: 3; flex: 1 0 100%; justify-content: flex-start; flex-wrap: wrap; margin: 0; padding-top: 6px; border-top: 1px solid #edf0f4; }
+}
+@media (max-width: 1280px) {
+  .track-main-nav { order: 3; flex: 1 0 100%; justify-content: flex-start; flex-wrap: wrap; margin: 0; padding-top: 6px; border-top: 1px solid #edf0f4; }
+  .public-header--track1 .public-header__inner { flex-wrap: wrap; }
+  .public-header--track1 .public-header__actions { margin-left: auto; }
+}
 @media (max-width: 1200px) {
   .public-header--track1 .public-header__inner { gap: 14px; }
   .track-header-product { display: none; }

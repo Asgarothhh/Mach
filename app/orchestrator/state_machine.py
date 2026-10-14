@@ -94,7 +94,9 @@ class SessionManager:
         return tuple(self.history.get(session_id, ()))
 
     def transition(self, session_id: str, new_state: SessionState):
-        # Здесь можно добавить валидацию допустимых переходов
+        current = self.active_sessions.get(session_id)
+        if current is SessionState.CLOSED and new_state is not SessionState.CLOSED:
+            return
         self.active_sessions[session_id] = new_state
         if new_state is SessionState.CLOSED:
             self.history.pop(session_id, None)

@@ -4,6 +4,7 @@ import { Link, Navigate, useParams } from 'react-router-dom';
 import { SectionHeading } from '../../../shared/components/SectionHeading';
 import { StatusBadge } from '../../../shared/components/StatusBadge';
 import { env } from '../../../shared/config/env';
+import { ApiError } from '../../../shared/api/http';
 import {
   correctBackendTranscript,
   endBackendSession,
@@ -48,7 +49,11 @@ function BackendAdminSessionDetailPage() {
       setDetail(await getBackendSession(sessionId));
     } catch (cause) {
       setDetail(null);
-      setError(cause instanceof Error ? cause.message : 'Не удалось загрузить сессию.');
+      if (cause instanceof ApiError && (cause.status === 404 || cause.status === 403)) {
+        setError('404 · сессия не найдена или недоступна для выбранной компании.');
+      } else {
+        setError(cause instanceof Error ? cause.message : 'Не удалось загрузить сессию.');
+      }
     } finally {
       setLoading(false);
     }
@@ -123,7 +128,7 @@ function BackendAdminSessionDetailPage() {
 
       {error && <div className="track-form-error" role="alert">{error}</div>}
       {actionMessage && <div className="track-inline-message is-success" role="status">{actionMessage}{chatLink && <p><a href={chatLink} target="_blank" rel="noopener noreferrer">Открыть ссылку текстового чата</a></p>}</div>}
-      {loading ? <div className="track-empty-state"><span className="loading-dot" />Загружаем детали сессии…</div> : !detail ? <section className="track-panel"><div className="track-empty-state"><ShieldCheck size={26} /><strong>Сессия недоступна</strong><span>Проверьте номер обращения и права доступа.</span><Link className="button button--secondary button--small" to="/admin/sessions">Вернуться к списку</Link></div></section> : <>
+      {loading ? <div className="track-empty-state"><span className="loading-dot" />Загружаем детали сессии…</div> : !detail ? <section className="track-panel"><div className="track-empty-state"><ShieldCheck size={26} /><strong>404 · сессия не найдена</strong><span>{error ?? 'Сессия отсутствует или недоступна для выбранной компании.'}</span><Link className="button button--secondary button--small" to="/admin/sessions">Вернуться к списку</Link></div></section> : <>
         <div className="track-call-summary-grid">
           <div className="track-summary-card"><span>Статус</span><strong><StatusBadge tone={sessionStatusTone(detail.status)}>{sessionStatusLabels[detail.status] ?? detail.status}</StatusBadge></strong><small>{detail.status}</small></div>
           <div className="track-summary-card"><span>Создана</span><strong>{formatDate(detail.created_at)}</strong><small>Дата с backend</small></div>

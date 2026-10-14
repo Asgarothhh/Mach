@@ -1,4 +1,5 @@
 import { env } from '../config/env';
+import { userFacingApiMessage } from '../lib/userFacingApiMessage';
 
 export class ApiError extends Error {
   constructor(
@@ -61,14 +62,11 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     } catch {
       // A server can return an empty/non-JSON error response.
     }
-    const suffix = detail ? ` ${detail}` : '';
-    throw new ApiError(
-      `API вернул ошибку (${response.status}) для ${method} ${pathname}.${suffix}`,
+    const message = userFacingApiMessage(
       response.status,
-      code,
-      method,
-      pathname,
+      response.status === 429 || response.status >= 500 ? undefined : detail,
     );
+    throw new ApiError(message, response.status, code, method, pathname);
   }
 
   if (response.status === 204) return undefined as T;

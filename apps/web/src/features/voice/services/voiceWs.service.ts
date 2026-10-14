@@ -1,3 +1,4 @@
+import { mapAnswerEventCitations } from '../../../shared/lib/mapAnswerEventCitations';
 import type { TranscriptEvent, VoiceState } from '../../../shared/types/voice';
 import { env } from '../../../shared/config/env';
 
@@ -131,8 +132,36 @@ export class VoiceWsClient {
   private handleEvent(message: { type?: string; payload?: Record<string, unknown> }): void {
     const payload = message.payload ?? {};
     if (message.type === 'InterruptionEvent') {
+      const turnId = this.currentGeneration ?? (typeof payload.interrupted_turn_id === 'string' ? payload.interrupted_turn_id : 'tts');
+      if (this.ttsBuffer) {
+        this.handlers.onTranscript({
+          id: `${turnId}:tts`,
+          text: this.ttsBuffer,
+          final: true,
+          role: 'assistant',
+          turnId,
+          interrupted: true,
+        });
+      }
       this.interruptPlayback();
       this.handlers.onState('listening');
+      return;
+    }
+    if (message.type === 'AnswerEvent') {
+      const text = typeof payload.answer_text === 'string' ? payload.answer_text : '';
+      const turnId = typeof payload.turn_id === 'string' ? payload.turn_id : 'answer';
+      const citations = mapAnswerEventCitations(payload);
+      if (text) {
+        this.handlers.onTranscript({
+          id: `${turnId}:tts`,
+          text,
+          final: false,
+          role: 'assistant',
+          turnId,
+          ...(citations.length ? { citations } : {}),
+        });
+      }
+      this.handlers.onState('processing');
       return;
     }
     if (message.type === 'ASREvent') {

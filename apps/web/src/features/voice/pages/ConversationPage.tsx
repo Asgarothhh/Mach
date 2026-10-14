@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Mic, MessageSquare, Pause, ShieldCheck, Square, Volume2 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { env } from '../../../shared/config/env';
+import { formatElapsed } from '../../../shared/lib/formatElapsed';
 import { demoAnswer, demoSources } from '../../knowledge/data/demoSources';
 import { MessageBubble } from '../../../shared/components/MessageBubble';
 import { SourceCard } from '../../../shared/components/SourceCard';
@@ -16,7 +17,7 @@ const stateCopy: Record<VoiceState, { title: string; caption: string; pill: stri
   connecting: { title: 'Подключаю голосовой канал', caption: 'Готовим защищённое соединение.', pill: 'Подключение' },
   listening: { title: 'Слушаю вас', caption: 'Говорите в обычном темпе. Можно перебить помощника в любой момент.', pill: 'Слушаю' },
   processing: { title: 'Проверяю официальные источники', caption: 'Ищу материалы по вашему вопросу. Ответ появится после проверки.', pill: 'Поиск информации' },
-  speaking: { title: 'Готовимся к поездке', caption: 'Можно перебить — просто начните говорить.', pill: 'Ответ озвучивается' },
+  speaking: { title: 'Отвечаю', caption: 'Можно перебить — просто начните говорить.', pill: 'Ответ озвучивается' },
   degraded: { title: 'Голос временно недоступен', caption: 'Продолжите диалог текстом.', pill: 'Текстовый режим' },
   ended: { title: 'Разговор завершён', caption: 'История диалога доступна до закрытия или очистки страницы.', pill: 'Завершено' },
 };
@@ -83,8 +84,8 @@ export function ConversationPage() {
               <small>В рабочем режиме это место обновляется событиями streaming ASR.</small>
             </section>
           )}
-          {state === 'processing' && <section className="evidence-panel"><div className="panel-heading"><div><span className="section-eyebrow">Поиск</span><h2>Ищем ответ в базе знаний</h2></div><StatusBadge tone="warning">Проверка</StatusBadge></div><p className="muted-copy">Сверяем вопрос с материалами компании. Ответ появится после проверки.</p><div className="source-stack">{demoSources.map((source) => <SourceCard key={source.id} source={source} />)}</div></section>}
-          {state === 'speaking' && shownAnswer && <article className="answer-card"><div className="answer-card__label"><span>ИИ-помощник</span><span>Демо-текст</span></div><p>{shownAnswer}</p><div className="answer-card__foot"><ShieldCheck size={15} /> Пример ответа. Фактические утверждения рабочей версии проверяются по актуальным источникам.</div></article>}
+          {state === 'processing' && <section className="evidence-panel"><div className="panel-heading"><div><span className="section-eyebrow">Поиск</span><h2>Ищем ответ в базе знаний</h2></div><StatusBadge tone="warning">Проверка</StatusBadge></div><p className="muted-copy">Сверяем вопрос с материалами компании. Ответ появится после проверки.</p>{env.demoMode && <div className="source-stack">{demoSources.map((source) => <SourceCard key={source.id} source={source} />)}</div>}</section>}
+          {state === 'speaking' && shownAnswer && <article className="answer-card"><div className="answer-card__label"><span>ИИ-помощник</span><span>{env.demoMode ? 'Демо-текст' : 'Ответ'}</span></div><p>{shownAnswer}</p><div className="answer-card__foot"><ShieldCheck size={15} /> Пример ответа. Фактические утверждения рабочей версии проверяются по актуальным источникам.</div></article>}
 
           <div className="voice-actionbar">
             {env.demoMode && state === 'speaking' && <button className="button button--secondary" onClick={() => { setDemoStage('listening'); }}><Pause size={16} /> Прервать ответ</button>}
@@ -105,7 +106,7 @@ export function ConversationPage() {
             </div>
             <small>Новая реплика появится здесь после завершения распознавания.</small>
           </section>
-          {(state === 'speaking' || shownSources.length > 0) && <section className="sources-panel"><h2>Проверить самостоятельно</h2><p className="muted-copy">Материалы, на которые опирается ответ</p><strong className="source-count">Источники · {shownSources.length}</strong><div className="source-stack">{shownSources.map((source) => <SourceCard key={source.id} source={source} compact />)}</div><small>Сверяйте факты с указанными страницами компании.</small></section>}
+          {(state === 'speaking' || shownSources.length > 0) && (env.demoMode || shownSources.length > 0) && <section className="sources-panel"><h2>Проверить самостоятельно</h2><p className="muted-copy">Материалы, на которые опирается ответ</p><strong className="source-count">Источники · {shownSources.length}</strong><div className="source-stack">{shownSources.map((source) => <SourceCard key={source.id} source={source} compact />)}</div><small>Сверяйте факты с указанными страницами компании.</small></section>}
           <section className="scope-note"><strong>Голосовой помощник в браузере</strong><p>Разговор идёт через браузер. Это не телефонный звонок.</p></section>
         </aside>
       </div>
@@ -113,4 +114,3 @@ export function ConversationPage() {
   );
 }
 
-function formatElapsed(seconds: number) { return `00:${seconds.toString().padStart(2, '0')}`; }

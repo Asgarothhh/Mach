@@ -72,12 +72,15 @@ export function OnboardingPage() {
       setError('Добавьте приветствие длиной не менее 12 символов.');
       return false;
     }
-    if (step === 2 && form.inbound_adapter === 'sip' && !form.inbound_endpoint_label.trim()) {
-      setError('Укажите ссылку на настроенный SIP endpoint.');
-      return false;
+    if (step === 1 && form.route_policy !== 'voice_first') {
+      const threshold = Number(form.complexity_threshold_seconds);
+      if (!Number.isInteger(threshold) || threshold < 15 || threshold > 180) {
+        setError('Укажите целое число секунд от 15 до 180.');
+        return false;
+      }
     }
-    if (step === 2 && env.demoMode && form.inbound_adapter === 'sip') {
-      setError('В демо можно создать только синтетический Mock call. SIP-тест доступен после подключения backend и credentials.');
+    if (step === 2 && !form.inbound_endpoint_label.trim()) {
+      setError('Укажите название входящего канала.');
       return false;
     }
     return true;
@@ -92,7 +95,8 @@ export function OnboardingPage() {
       const selectedProfile = profiles.find((item) => item.tenant_id === selectedProfileId);
       const targetProfile = profileMode === 'existing' ? selectedProfile : (createdTenant && createdTenant.display_name === form.display_name ? createdTenant : undefined);
       if (profileMode === 'existing' && !targetProfile) throw new Error('Выберите существующий профиль компании.');
-      const tenant = targetProfile ? await updateTenantProfile(targetProfile.tenant_id, form) : await createTenant(form);
+      const saved = targetProfile ? await updateTenantProfile(targetProfile.tenant_id, form) : await createTenant(form);
+      const tenant = saved.value;
       setCreatedTenant(tenant);
       registerTenant(tenant);
       setActiveTenant(tenant.tenant_id, tenant.display_name);
@@ -103,12 +107,12 @@ export function OnboardingPage() {
         setError('Есть обязательные поля, которые нужно исправить. Проверьте список ниже.');
         return;
       }
-      const testCall = await startTenantTestCall(tenant.tenant_id, form.inbound_adapter, tenant.display_name);
-      if (testCall.status === 'failed') {
-        setError(testCall.message || 'Тестовый вызов не прошёл. Проверьте настройки канала.');
+      const testCall = await startTenantTestCall(tenant.tenant_id, 'mock', tenant.display_name);
+      if (testCall.value.status === 'failed') {
+        setError(testCall.value.message || 'Тестовый вызов не прошёл. Проверьте настройки канала.');
         return;
       }
-      setTestCallId(testCall.call_id);
+      setTestCallId(testCall.value.session_id || testCall.value.call_id);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Не удалось завершить настройку. Проверьте API и права доступа.');
     } finally {
@@ -162,15 +166,15 @@ export function OnboardingPage() {
               <label className={`track-choice ${form.route_policy === 'chat_for_complex' ? 'is-selected' : ''}`}><input type="radio" name="route-policy" checked={form.route_policy === 'chat_for_complex'} onChange={() => update('route_policy', 'chat_for_complex' as RoutePolicy)} /><span><strong>Предлагать чат для сложных вопросов</strong><small>Сначала предложить переход, получить согласие и лишь потом передать контекст.</small></span></label>
               <label className={`track-choice ${form.route_policy === 'human_for_complex' ? 'is-selected' : ''}`}><input type="radio" name="route-policy" checked={form.route_policy === 'human_for_complex'} onChange={() => update('route_policy', 'human_for_complex' as RoutePolicy)} /><span><strong>Переводить сложные обращения человеку</strong><small>В тестовом окружении результат зависит от настроенного transfer adapter.</small></span></label>
             </fieldset>
-            {form.route_policy !== 'voice_first' && <label className="track-field"><span>Порог предложения передачи · секунды</span><input type="number" min={15} max={180} value={form.complexity_threshold_seconds} onChange={(event) => update('complexity_threshold_seconds', Number(event.target.value))} /></label>}
+            {form.route_policy !== 'voice_first' && <label className="track-field"><span>Порог предложения передачи · секунды</span><input type="number" min={15} max={180} step={1} required value={form.complexity_threshold_seconds} onChange={(event) => update('complexity_threshold_seconds', Number.parseInt(event.target.value, 10) || 0)} /><small>Целое число от 15 до 180.</small></label>}
           </div>}
 
           {step === 2 && <div className="track-form-stack">
             <fieldset className="track-fieldset"><legend>Входящий канал</legend>
               <label className={`track-choice ${form.inbound_adapter === 'mock' ? 'is-selected' : ''}`}><input type="radio" name="inbound-adapter" checked={form.inbound_adapter === 'mock'} onChange={() => update('inbound_adapter', 'mock' as InboundAdapter)} /><span><strong>Тестовый вызов</strong><small>Проверка сценария в кабинете, без телефонной сети.</small></span><StatusBadge tone="demo">Доступно</StatusBadge></label>
-              <label className={`track-choice ${form.inbound_adapter === 'sip' ? 'is-selected' : ''}`}><input type="radio" name="inbound-adapter" checked={form.inbound_adapter === 'sip'} onChange={() => update('inbound_adapter', 'sip' as InboundAdapter)} /><span><strong>Телефонный канал</strong><small>Доступен только после отдельного подключения входящей линии.</small></span></label>
+              <label className={`track-choice ${form.inbound_adapter === 'sip' ? 'is-selected' : ''} is-disabled`}><input type="radio" name="inbound-adapter" checked={false} disabled /><span><strong>Телефонный канал</strong><small>SIP на этом стенде недоступен.</small></span></label>
             </fieldset>
-            <label className="track-field"><span>Название входящего канала</span><input value={form.inbound_endpoint_label} onChange={(event) => update('inbound_endpoint_label', event.target.value)} placeholder={form.inbound_adapter === 'mock' ? 'Тестовый входящий вызов' : 'Входящая линия'} /></label>
+            <label className="track-field"><span>Название входящего канала <b>*</b></span><input value={form.inbound_endpoint_label} onChange={(event) => update('inbound_endpoint_label', event.target.value)} placeholder={form.inbound_adapter === 'mock' ? 'Тестовый входящий вызов' : 'Входящая линия'} required /></label>
             <div className="track-field-row">
               <label className="track-field"><span>Канал чата</span><select value={form.chat_provider} onChange={(event) => update('chat_provider', event.target.value as 'none' | 'mock')}><option value="mock">Текстовый чат</option><option value="none">Пока не настроен</option></select></label>
               <label className="track-field"><span>Название чата</span><input value={form.chat_destination_label} onChange={(event) => update('chat_destination_label', event.target.value)} disabled={form.chat_provider === 'none'} /></label>
@@ -196,8 +200,8 @@ export function OnboardingPage() {
         </> : <div className="track-onboarding-success">
           <div className="track-success-icon"><CheckCircle2 size={32} /></div>
           <span className="track-step-kicker">Готово</span>
-          <h2>Профиль настроен</h2>
-          <p>Для «{form.display_name}» создан тестовый вызов. Это проверка сценария, а не подключение телефонной сети.</p>
+          <h2>Локальный профиль сохранён</h2>
+          <p>Для «{form.display_name}» создана сессия проверки. Профиль мастера хранится в браузере; SIP на этом стенде недоступен.</p>
           <div className="track-result-list">
             <div><CheckCircle2 size={17} /><span>Профиль компании</span><strong>Создан</strong></div>
             <div><CheckCircle2 size={17} /><span>Уведомление о разговоре</span><strong>{form.consent_notice_version}</strong></div>
@@ -208,7 +212,7 @@ export function OnboardingPage() {
           <div className="track-wizard-actions track-wizard-actions--center"><button className="button button--secondary" onClick={() => navigate(`/calls/${testCallId}`)}>Открыть тестовый звонок</button><button className="button button--primary" onClick={() => navigate('/calls')}>Перейти к истории звонков <ArrowRight size={16} /></button></div>
         </div>}
       </div>
-      <p className="track-page-footnote">{env.demoMode ? 'Демо: создаются синтетические записи профиля и звонка. Тест не обращается к телефонной сети и не связывается с реальным клиентом.' : 'Доступ и настройки проверяет сервис. Если телефонный канал ещё не подключён, это будет видно отдельно.'}</p>
+      <p className="track-page-footnote">Профили мастера на этом стенде сохраняются в браузере. Тестовая сессия при живом API создаётся через POST /sessions. SIP заблокирован.</p>
     </div>
   );
 }

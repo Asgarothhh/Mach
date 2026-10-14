@@ -105,6 +105,16 @@ def test_correction_is_social_but_keeps_following_content() -> None:
     assert route_turn("не так давно подключил тариф").query == "не так давно подключил тариф"
 
 
+def test_correction_lead_is_follow_up_when_history() -> None:
+    routed = route_turn("нет, я имел в виду график работы", has_history=True)
+    assert routed.kind is TurnKind.FOLLOW_UP
+    assert SocialAct.CORRECTION in routed.acts
+    assert "график работы" in routed.query
+    without_history = route_turn("нет, я имел в виду график работы")
+    assert without_history.kind is TurnKind.MIXED
+    assert "график работы" in without_history.query
+
+
 def test_contentless_turn_continues_topic_only_with_history() -> None:
     assert route_turn("сколько?", has_history=True).kind is TurnKind.FOLLOW_UP
     assert route_turn("сколько?").kind is TurnKind.SOCIAL

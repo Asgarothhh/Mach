@@ -10,9 +10,10 @@ export function MessageBubble({ message, compact = false }: { message: Conversat
   const roleLabel = message.role === 'user' ? 'Вы' : message.role === 'system' ? 'Система' : 'ИИ-помощник';
   return (
     <article className={`message-bubble message-bubble--${message.role} ${compact ? 'message-bubble--compact' : ''} ${!message.final ? 'message-bubble--partial' : ''}`}>
-      <div className="message-bubble__meta"><strong>{roleLabel}{!message.final && ' · распознаётся'}</strong><span><Clock3 size={12} />{timeLabel(message.createdAt)}</span></div>
+      <div className="message-bubble__meta"><strong>{roleLabel}{message.interrupted ? ' · прервано' : !message.final ? ' · распознаётся' : ''}</strong><span><Clock3 size={12} />{timeLabel(message.createdAt)}</span></div>
       <p>{message.text}</p>
-      {!message.final && <small>Текст уточняется, пока вы говорите. Это ещё не завершённое сообщение.</small>}
+      {message.interrupted && <small>Реплика прервана.</small>}
+      {!message.final && !message.interrupted && <small>Текст уточняется, пока вы говорите. Это ещё не завершённое сообщение.</small>}
     </article>
   );
 }

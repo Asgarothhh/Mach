@@ -58,6 +58,40 @@ guardrails = GuardrailsService()
 runtime: KnowledgeRuntime = build_knowledge_runtime()
 store: TurnStore = SqlAlchemyTurnStore(AsyncSessionLocal)
 
+
+def _session_rate_key(request: Request) -> str:
+    return request.path_params.get("session_id") or get_remote_address(request)
+
+
+def _llm_check() -> dict[str, str]:
+    provider = "mock" if llm_adapter.is_mock else "openrouter"
+    return {"provider": provider, "model_id": resolve_llm_model_id()}
+
+
+async def _persist_session_status(session_id: str, status: SessionState | None = None) -> bool:
+    target = status or session_manager.active_sessions.get(session_id)
+    if target is None:
+        return False
+    try:
+        return await store.update_session_status(session_id, target)
+    except Exception as exc:  # noqa: BLE001 - persistence is best-effort
+        logger.error("session_status_persist_failed", error_class=exc.__class__.__name__)
+        return False
+
+
+async def _close_session(session_id: str) -> bool:
+    in_memory = session_id in session_manager.active_sessions
+    if in_memory:
+        if session_id in session_manager.active_turns:
+            session_manager.active_turns[session_id].cancel()
+        session_manager.transition(session_id, SessionState.CLOSED)
+        session_manager.unbind(session_id)
+    persisted = await _persist_session_status(session_id, SessionState.CLOSED)
+    if in_memory or persisted:
+        logger.info("session_ended", session_id=session_id)
+        return True
+    return False
+
 _requested_llm = resolve_llm_model_id()
 _allowed_models = [DEFAULT_LLM_MODEL_ID]
 if _requested_llm not in _allowed_models:
@@ -133,6 +167,7 @@ async def readiness():
         "postgres": postgres,
         "voice": voice_pipeline_status(),
         "knowledge": knowledge,
+        "llm": _llm_check(),
     }
     body = {"status": "ready" if retriever_ok else "not_ready", "checks": checks}
     if retriever_ok:
@@ -141,7 +176,7 @@ async def readiness():
 
 
 @app.post("/api/v1/sessions", response_model=SessionResponse, tags=["Sessions"])
-@limiter.limit("5/minute")
+@limiter.limit("10/minute")
 async def create_session(request: Request, req: SessionCreateRequest):
     """Инициализация новой сессии вызова с ограничением частоты[cite: 6]."""
     if req.tenant_id not in runtime.tenants:
@@ -176,7 +211,8 @@ async def create_session(request: Request, req: SessionCreateRequest):
     response_model=TextTurnResponse,
     tags=["Sessions"],
 )
-@limiter.limit("5/minute")
+@limiter.limit("60/minute")
+@limiter.limit("20/minute", key_func=_session_rate_key)
 async def text_turn(request: Request, session_id: str, body: TextTurnRequest):
     binding = session_manager.get_binding(session_id)
     if (
@@ -190,8 +226,10 @@ async def text_turn(request: Request, session_id: str, body: TextTurnRequest):
         )
     except UnknownSessionError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    await _persist_session_status(session_id)
     return TextTurnResponse(
         session_id=outcome.session_id,
+        tenant_id=outcome.tenant_id,
         turn_id=outcome.turn_id,
         answer_text=outcome.answer_text,
         answer_status=outcome.answer_status,
@@ -206,15 +244,8 @@ async def text_turn(request: Request, session_id: str, body: TextTurnRequest):
 @app.post("/api/v1/sessions/{session_id}/end", tags=["Sessions"])
 async def end_session(session_id: str):
     """Принудительное завершение сессии и отмена активных задач."""
-    if session_id not in session_manager.active_sessions:
+    if not await _close_session(session_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
-
-    session_manager.transition(session_id, SessionState.CLOSED)
-    if session_id in session_manager.active_turns:
-        session_manager.active_turns[session_id].cancel()
-    session_manager.unbind(session_id)
-
-    logger.info("session_ended", session_id=session_id)
     return {"message": "Session terminated"}
 
 
@@ -227,7 +258,21 @@ async def send_tts_stream(websocket: WebSocket, session_id: str, asr_text: str):
     ближайшем await.
     """
     try:
-        stream = dialog_orchestrator.stream_final_asr(session_id, asr_text)
+        outcome = await dialog_orchestrator.run_turn(session_id, asr_text, channel="websocket")
+        mapped_sources = [SourceRef(**source) for source in outcome.sources]
+        await _safe_send_json(websocket, {
+            "type": "AnswerEvent",
+            "payload": {
+                "session_id": outcome.session_id,
+                "turn_id": outcome.turn_id,
+                "timestamp_ms": 0,
+                "answer_text": outcome.answer_text,
+                "answer_status": outcome.answer_status,
+                "citation_ids": outcome.citation_ids,
+                "sources": [item.model_dump(mode="json") for item in mapped_sources],
+            },
+        })
+        stream = dialog_orchestrator.stream_tts_for_outcome(session_id, outcome)
         try:
             async for tts_event in stream:
                 context = session_manager.active_turns.get(session_id)
@@ -471,7 +516,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     error_class=e.__class__.__name__,
                 )
         await stop_generation()
-        session_manager.transition(session_id, SessionState.CLOSED)
+        await _close_session(session_id)
 
 
 @app.post("/api/v1/sessions/{session_id}/handoff/human", response_model=HandoffResponse, tags=["Sessions"])
@@ -481,6 +526,7 @@ async def handoff_to_human(session_id: str):
         raise HTTPException(status_code=404, detail="Session not found")
 
     session_manager.transition(session_id, SessionState.HUMAN_HANDOFF)
+    await _persist_session_status(session_id, SessionState.HUMAN_HANDOFF)
 
     logger.info("handoff_human_initiated", session_id=session_id)
 
@@ -499,6 +545,7 @@ async def handoff_to_chat(session_id: str):
         raise HTTPException(status_code=404, detail="Session not found")
 
     session_manager.transition(session_id, SessionState.CHAT_HANDOFF)
+    await _persist_session_status(session_id, SessionState.CHAT_HANDOFF)
 
     chat_token = str(uuid.uuid4())[:8]
     chat_url = f"{os.getenv('APP_PUBLIC_ORIGIN', 'http://localhost:3000')}/chat/{session_id}?token={chat_token}"

@@ -24,6 +24,17 @@ class SessionResponse(BaseModel):
     status: SessionState
     created_at: datetime
 
+
+class AdminSessionSummary(BaseModel):
+    session_id: str
+    tenant_id: str
+    status: SessionState
+    channel: str
+    language: str
+    created_at: datetime
+    ended_at: datetime | None = None
+    turn_count: int = 0
+
 class ErrorResponse(BaseModel):
     detail: str
     error_code: str
@@ -40,7 +51,10 @@ class SessionDetailResponse(BaseModel):
     tenant_id: str
     status: SessionState
     channel: str
+    language: str = "ru"
     created_at: datetime
+    ended_at: datetime | None = None
+    turn_count: int = 0
     turns: list[TurnResponse] = []
 
 class TranscriptCorrectionRequest(BaseModel):
@@ -71,6 +85,7 @@ class TextTurnRequest(BaseModel):
 
 class TextTurnResponse(BaseModel):
     session_id: str
+    tenant_id: str | None = None
     turn_id: str
     answer_text: str
     answer_status: str

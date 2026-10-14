@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { ArrowRight, Info, Mic, Send } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { MessageBubble } from '../../../shared/components/MessageBubble';
@@ -7,6 +7,8 @@ import { StatusBadge } from '../../../shared/components/StatusBadge';
 import { env } from '../../../shared/config/env';
 import { demoSources } from '../../knowledge/data/demoSources';
 import { sendTextMessage } from '../../chat/services/chat.service';
+import { resetBackendTextSession } from '../../chat/services/backendTextTest.service';
+import { endVoiceSession } from '../services/session.service';
 import { useTenant } from '../../tenant/model/TenantContext';
 import { useVoiceExperience } from '../model/VoiceExperienceContext';
 
@@ -23,27 +25,33 @@ function answerStatusTone(status?: string): 'success' | 'warning' {
 
 export function TextModePage() {
   const { conversation, voice } = useVoiceExperience();
-  const { tenantId } = useTenant();
+  const { tenantId, supportUrl } = useTenant();
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [lastStatus, setLastStatus] = useState<string | undefined>();
+  const tenantAtSend = useRef(tenantId);
   const navigate = useNavigate();
+  const reusableSessionId = voice.sessionId && voice.sessionTenantId === tenantId ? voice.sessionId : '';
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function submit(event?: FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
     const text = draft.trim();
     if (!text || sending) return;
 
     setDraft('');
     setSending(true);
+    tenantAtSend.current = tenantId;
     conversation.addMessage('user', text, env.demoMode && !env.backendTextTest ? 'demo' : 'live');
     try {
-      const result = await sendTextMessage({ sessionId: voice.sessionId ?? '', text, tenantId });
+      const result = await sendTextMessage({ sessionId: reusableSessionId, text, tenantId });
+      if (tenantAtSend.current !== tenantId) return;
+      if (result.tenant_id && result.tenant_id !== tenantId) return;
       setLastStatus(result.answer_status);
       conversation.addMessage('assistant', result.answer_text, env.demoMode && !env.backendTextTest ? 'demo' : 'live', {
         citations: result.citations ?? [],
       });
     } catch (cause) {
+      if (tenantAtSend.current !== tenantId) return;
       conversation.addMessage(
         'system',
         cause instanceof Error ? cause.message : 'Не удалось отправить вопрос.',
@@ -54,23 +62,42 @@ export function TextModePage() {
     }
   }
 
+  function onComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      void submit();
+    }
+  }
+
+  async function clearDialog() {
+    if (voice.sessionId && !env.demoMode) {
+      await endVoiceSession(voice.sessionId).catch(() => undefined);
+    }
+    await resetBackendTextSession();
+    conversation.clearConversation();
+    voice.reset();
+    setLastStatus(undefined);
+  }
+
   const latestAnswer = [...conversation.messages].reverse().find((message) => message.role === 'assistant');
   const sources = latestAnswer?.citations ?? (env.demoMode && !env.backendTextTest && conversation.messages.length ? demoSources : []);
   const statusLabel = answerStatusLabel(lastStatus);
+  const showVoiceUnavailable = !voice.textPreferred && voice.state === 'degraded';
 
   return (
     <section className="text-page">
       <div className="text-page__title-row">
         <h1>Продолжим текстом</h1>
-        <div><StatusBadge tone="danger">РУ · выбран</StatusBadge><StatusBadge>БЕ · текст поддерживается</StatusBadge></div>
       </div>
-      <div className="inline-alert inline-alert--info">
-        <Info size={19} />
-        <div>
-          <strong>Голос временно недоступен. Продолжим текстом</strong>
-          <p>Ваш диалог сохранён. Ответы будут появляться здесь. Можно попробовать восстановить голос, не начиная разговор заново.</p>
+      {showVoiceUnavailable && (
+        <div className="inline-alert inline-alert--info">
+          <Info size={19} />
+          <div>
+            <strong>Голос временно недоступен. Продолжим текстом</strong>
+            <p>Ваш диалог сохранён. Ответы будут появляться здесь. Можно попробовать восстановить голос, не начиная разговор заново.</p>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="text-layout">
         <section className="dialog-panel text-dialog-panel">
@@ -84,6 +111,7 @@ export function TextModePage() {
               id="text-message"
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={onComposerKeyDown}
               placeholder="Напишите вопрос без личных данных…"
               maxLength={2000}
               rows={3}
@@ -92,7 +120,7 @@ export function TextModePage() {
               {sending ? 'Отправляем…' : 'Отправить'} <Send size={16} />
             </button>
           </form>
-          <button className="button button--text clear-dialog" type="button" onClick={() => conversation.clearConversation()}>
+          <button className="button button--text clear-dialog" type="button" onClick={() => void clearDialog()}>
             Очистить диалог
           </button>
         </section>
@@ -121,7 +149,9 @@ export function TextModePage() {
           <div className="scope-note">
             <strong>Не выполняю операции</strong>
             <p>Помощник отвечает по базе знаний компании. Не сообщайте паспортные данные и номера карт.</p>
-            <a href="https://help.mts.by/" target="_blank" rel="noopener noreferrer">Официальная поддержка <ArrowRight size={14} /></a>
+            {supportUrl ? (
+              <a href={supportUrl} target="_blank" rel="noopener noreferrer">Официальная поддержка <ArrowRight size={14} /></a>
+            ) : null}
           </div>
         </aside>
       </div>

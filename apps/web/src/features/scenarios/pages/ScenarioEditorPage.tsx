@@ -42,7 +42,7 @@ export function ScenarioEditorPage() {
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const list = await listScenarios(tenantId);
+      const { value: list } = await listScenarios(tenantId);
       setScenarios(list);
       if (list.length > 0) {
         const chosen = list.find((item) => item.scenario_id === selectedId) ?? list[0];
@@ -107,10 +107,10 @@ export function ScenarioEditorPage() {
     if (!draft.name.trim() || !draft.instructions.trim()) { setError('Название и инструкции сценария обязательны.'); return; }
     setSaving(true); setError(null); setMessage(null);
     try {
-      const saved = await saveScenarioDraft(tenantId, draft, selectedId || undefined);
+      const { value: saved, source } = await saveScenarioDraft(tenantId, draft, selectedId || undefined);
       setScenarios((current) => [saved, ...current.filter((item) => item.scenario_id !== saved.scenario_id)]);
       selectScenario(saved);
-      setMessage(env.demoMode ? 'Черновик сохранён в демо-памяти. Backend/production запись не выполнялась.' : 'Черновик отправлен в backend. Проверьте его версию и права доступа.');
+      setMessage(source === 'api' ? 'Черновик отправлен в backend. Проверьте его версию и права доступа.' : 'Черновик сохранён только в этом браузере. На ответы помощника это не влияет.');
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Не удалось сохранить черновик.'); }
     finally { setSaving(false); }
   }
@@ -123,10 +123,10 @@ export function ScenarioEditorPage() {
     try {
       const scenario = scenarios.find((item) => item.scenario_id === selectedId);
       if (!scenario) throw new Error('Сценарий не найден. Сохраните черновик повторно.');
-      await publishScenario(tenantId, scenario);
+      const source = await publishScenario(tenantId, scenario);
       setCurrentStatus('published');
       setScenarios((current) => current.map((item) => item.scenario_id === selectedId ? { ...item, status: 'published', revision_id: `${item.revision_id}-published`, updated_at: new Date().toISOString() } : item));
-      setMessage(env.demoMode ? 'Публикация демонстрационная; реальный routing policy не менялся.' : 'Запрос публикации принят. Проверьте ответ backend и audit log.');
+      setMessage(source === 'api' ? 'Запрос публикации принят. Проверьте ответ backend и audit log.' : 'Публикация сохранена только в браузере. Маршрут помощника не изменился.');
       await refreshVersions(selectedId);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Не удалось опубликовать сценарий.'); }
     finally { setSaving(false); }
@@ -136,10 +136,10 @@ export function ScenarioEditorPage() {
     if (!selectedId || !window.confirm(`Восстановить ревизию ${revisionId}? Действие должно быть зааудировано backend.`)) return;
     setSaving(true); setError(null); setMessage(null);
     try {
-      const restored = await rollbackScenario(tenantId, selectedId, revisionId);
+      const { value: restored, source } = await rollbackScenario(tenantId, selectedId, revisionId);
       setScenarios((current) => [restored, ...current.filter((item) => item.scenario_id !== restored.scenario_id)]);
       selectScenario(restored);
-      setMessage(env.demoMode ? 'Демо rollback выполнен. Production-сценарий не менялся.' : 'Запрос rollback выполнен backend. Проверьте audit event и active revision.');
+      setMessage(source === 'api' ? 'Запрос rollback выполнен backend. Проверьте audit event и active revision.' : 'Откат сохранён только в этом браузере. Production-сценарий не менялся.');
       await refreshVersions(restored.scenario_id);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Не удалось восстановить ревизию.'); }
     finally { setSaving(false); }
@@ -162,7 +162,7 @@ export function ScenarioEditorPage() {
   return (
     <div className="track-page">
       <SectionHeading eyebrow="Сценарии" title="Сценарии и маршрутизация" description={`Настройте поведение помощника для ${tenantName}. Изменения сохраняются с версиями и проверкой.`} action={<button className="button button--primary button--small" onClick={newScenario}><Plus size={15} /> Новый сценарий</button>} />
-      {env.demoMode && <div className="track-demo-banner"><span className="track-demo-dot" /><div><strong>Демо-режим редактора</strong><p>Черновики хранятся в памяти вкладки/сборки. Для реального применения нужны API, RBAC, server-side validation, version diff и audit events.</p></div><StatusBadge tone="demo">DEMO</StatusBadge></div>}
+      <div className="track-demo-banner"><span className="track-demo-dot" /><div><strong>Сохраняется только в браузере</strong><p>Сценарии на этом стенде не пишутся в backend и не влияют на ответы помощника.</p></div><StatusBadge tone="warning">Локально</StatusBadge></div>
       {error && <div className="track-form-error" role="alert">{error}</div>}
       {message && <div className="track-inline-message is-success" role="status">{message}</div>}
       {validationMessages.length > 0 && <div className="track-form-error" role="alert"><strong>Сценарий не прошёл проверку</strong><ul>{validationMessages.map((item) => <li key={item}>{item}</li>)}</ul></div>}

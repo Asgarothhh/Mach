@@ -22,6 +22,26 @@ export interface CallListResult {
   total: number;
   page: number;
   page_size: number;
+  truncated?: boolean;
+}
+
+function mapSessionChannel(channel?: string): CallSummary['channel'] {
+  if (channel === 'sip' || channel === 'telephone') return 'telephone';
+  if (channel === 'webrtc' || channel === 'browser' || channel === 'browser_test') return 'browser_test';
+  return 'test_call';
+}
+
+function mapSessionStatus(status: string): CallSummary['status'] {
+  if (['CLOSED', 'closed'].includes(status)) return 'completed';
+  if (['DEGRADED', 'degraded'].includes(status)) return 'degraded';
+  if (['HUMAN_HANDOFF', 'CHAT_HANDOFF', 'HANDOFF'].includes(status)) return 'handoff';
+  return 'active';
+}
+
+function mapSessionRoute(status: string): CallSummary['route_decision'] {
+  if (status === 'HUMAN_HANDOFF') return 'human_handoff';
+  if (status === 'CHAT_HANDOFF') return 'chat_offer';
+  return 'voice';
 }
 
 export async function listCalls(filters: CallFilters = {}): Promise<CallListResult> {
@@ -29,20 +49,20 @@ export async function listCalls(filters: CallFilters = {}): Promise<CallListResu
   const pageSize = Math.min(100, Math.max(1, filters.pageSize ?? 8));
   if (env.backendAdminSessions) {
     const params = new URLSearchParams({ limit: '100' });
-    params.set('tenant_id', env.backendTestTenantId);
+    if (filters.tenantId) params.set('tenant_id', filters.tenantId);
     const sessions = await apiRequest<Array<{session_id: string; tenant_id?: string; status: string; created_at: string; ended_at?: string | null; channel?: string; language?: string; turn_count?: number}>>(`/admin/sessions?${params.toString()}`);
     const items: CallSummary[] = sessions.map((session): CallSummary => ({
       call_id: session.session_id,
       session_id: session.session_id,
-      tenant_id: session.tenant_id ?? env.backendTestTenantId,
+      tenant_id: session.tenant_id ?? filters.tenantId ?? env.backendTestTenantId,
       created_at: session.created_at,
       ...(session.ended_at ? { ended_at: session.ended_at } : {}),
-      status: ['CLOSED', 'closed'].includes(session.status) ? 'completed' : ['DEGRADED', 'degraded'].includes(session.status) ? 'degraded' : ['HUMAN_HANDOFF', 'CHAT_HANDOFF', 'HANDOFF'].includes(session.status) ? 'handoff' : 'active',
-      channel: 'test_call',
+      status: mapSessionStatus(session.status),
+      channel: mapSessionChannel(session.channel),
       caller_alias: 'Локальный test call',
       language: (session.language === 'be' || session.language === 'en' ? session.language : 'ru'),
       intent: 'general_question',
-      route_decision: 'voice',
+      route_decision: mapSessionRoute(session.status),
       consent_state: 'not_required_demo',
       turn_count: session.turn_count ?? 0,
       ttfa_ms: undefined,
@@ -51,10 +71,23 @@ export async function listCalls(filters: CallFilters = {}): Promise<CallListResu
     const filtered = items.filter((call) => {
       const matchesQuery = !query || `${call.call_id} ${call.intent}`.toLowerCase().includes(query);
       const matchesStatus = !filters.status || filters.status === 'all' || call.status === filters.status;
-      return matchesQuery && matchesStatus;
+      const matchesRoute = !filters.route || filters.route === 'all' || call.route_decision === filters.route;
+      const matchesChannel = !filters.channel || filters.channel === 'all' || call.channel === filters.channel;
+      const callDate = new Date(call.created_at).getTime();
+      const fromDate = filters.from ? new Date(`${filters.from}T00:00:00`).getTime() : null;
+      const toDate = filters.to ? new Date(`${filters.to}T23:59:59.999`).getTime() : null;
+      const matchFrom = fromDate === null || callDate >= fromDate;
+      const matchTo = toDate === null || callDate <= toDate;
+      return matchesQuery && matchesStatus && matchesRoute && matchesChannel && matchFrom && matchTo;
     });
     const start = (page - 1) * pageSize;
-    return { items: filtered.slice(start, start + pageSize), total: filtered.length, page, page_size: pageSize };
+    return {
+      items: filtered.slice(start, start + pageSize),
+      total: filtered.length,
+      page,
+      page_size: pageSize,
+      truncated: sessions.length >= 100,
+    };
   }
   if (env.demoMode) {
     const query = (filters.query ?? '').toLowerCase().trim();
@@ -83,6 +116,7 @@ export async function getCallDetail(
   resourceId: string,
   tenantId: string,
   scope: 'tenant' | 'admin' = 'tenant',
+  signal?: AbortSignal,
 ): Promise<CallDetail | null> {
   void scope;
   if (!env.backendAdminSessions) {
@@ -96,11 +130,11 @@ export async function getCallDetail(
     channel?: string;
     created_at: string;
     turns?: Array<{ turn_id: string; sequence_no?: string | number; redacted_text?: string | null; intent?: string | null; started_at?: string }>;
-  }>(`/admin/sessions/${encodeURIComponent(resourceId)}`);
+  }>(`/admin/sessions/${encodeURIComponent(resourceId)}`, signal ? { signal } : {});
   const turns = detail.turns ?? [];
   const callSummary: CallSummary = {
     call_id: resourceId, session_id: resourceId, tenant_id: detail.tenant_id ?? env.backendTestTenantId,
-    created_at: detail.created_at ?? turns[0]?.started_at ?? new Date().toISOString(), status: 'completed', channel: 'test_call',
+    created_at: detail.created_at ?? turns[0]?.started_at ?? new Date().toISOString(), status: mapSessionStatus(detail.status), channel: mapSessionChannel(detail.channel),
     caller_alias: 'Локальный test call', language: 'ru', intent: 'general_question', route_decision: 'voice',
     consent_state: 'not_required_demo', turn_count: turns.length,
   };

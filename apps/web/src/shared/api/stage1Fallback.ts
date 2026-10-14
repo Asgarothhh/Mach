@@ -40,15 +40,27 @@ export function stage1ControlPlaneAvailable(): Promise<boolean> {
   return controlPlaneProbe;
 }
 
+export type DemoFallbackSource = 'api' | 'local';
+
+export async function withDemoFallbackSource<T>(
+  apiCall: () => Promise<T>,
+  demoCall: () => T | Promise<T>,
+): Promise<{ value: T; source: DemoFallbackSource }> {
+  if (!(await stage1ControlPlaneAvailable())) {
+    return { value: await demoCall(), source: 'local' };
+  }
+  try {
+    return { value: await apiCall(), source: 'api' };
+  } catch (error) {
+    if (!isRouteNotImplemented(error)) throw error;
+    return { value: await demoCall(), source: 'local' };
+  }
+}
+
 export async function withDemoFallback<T>(
   apiCall: () => Promise<T>,
   demoCall: () => T | Promise<T>,
 ): Promise<T> {
-  if (!(await stage1ControlPlaneAvailable())) return demoCall();
-  try {
-    return await apiCall();
-  } catch (error) {
-    if (!isRouteNotImplemented(error)) throw error;
-    return demoCall();
-  }
+  const { value } = await withDemoFallbackSource(apiCall, demoCall);
+  return value;
 }

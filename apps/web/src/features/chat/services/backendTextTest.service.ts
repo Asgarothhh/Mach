@@ -18,6 +18,7 @@ type ApiTextTurnResponse = {
   sources?: unknown;
   fallback_reason?: unknown;
   evidence_status?: unknown;
+  tenant_id?: unknown;
   result?: unknown;
   turn?: unknown;
   assistant_turn?: unknown;
@@ -105,9 +106,16 @@ function extractAnswerStatus(payload: unknown): SendTextMessageResult['answer_st
   return undefined;
 }
 
-export function resetBackendTextSession(): void {
+export async function resetBackendTextSession(): Promise<void> {
+  const sessionId = cachedSessionId;
   cachedSessionId = null;
   cachedTenantId = null;
+  if (!sessionId) return;
+  try {
+    await apiRequest(`/sessions/${encodeURIComponent(sessionId)}/end`, { method: 'POST' });
+  } catch {
+    // Best-effort close; a missing or already-ended session must not block UI reset.
+  }
 }
 
 async function getSessionId(preferredSessionId?: string, tenantId?: string): Promise<string> {
@@ -155,6 +163,7 @@ export async function sendBackendTextTest(input: SendTextMessageInput): Promise<
 
   return {
     answer_text: answer,
+    tenant_id: typeof raw.tenant_id === 'string' ? raw.tenant_id : cachedTenantId ?? undefined,
     citation_ids: extractCitationIds(raw),
     citations: extractCitations(raw),
     answer_status: extractAnswerStatus(raw) ?? 'no_evidence',

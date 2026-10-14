@@ -15,6 +15,8 @@ export function useVoiceSession({ onTranscript }: Options) {
   const [state, setState] = useState<VoiceState>('idle');
   const [notice, setNotice] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionTenantId, setSessionTenantId] = useState<string | null>(null);
+  const [textPreferred, setTextPreferred] = useState(false);
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [clockNow, setClockNow] = useState(Date.now());
   const [channelLabel, setChannelLabel] = useState('Голосовой помощник в браузере');
@@ -51,6 +53,7 @@ export function useVoiceSession({ onTranscript }: Options) {
         const session = await createVoiceSession(tenantId);
         createdSessionId = session.session_id;
         setSessionId(session.session_id);
+        setSessionTenantId(tenantId);
         if (!session.token) {
           throw new Error('Не удалось подключить голос. Попробуйте ещё раз или напишите текстом.');
         }
@@ -71,6 +74,7 @@ export function useVoiceSession({ onTranscript }: Options) {
           await endVoiceSession(createdSessionId).catch(() => undefined);
         }
         setSessionId(null);
+        setSessionTenantId(null);
         setState('degraded');
         setNotice(error instanceof Error ? error.message : 'Не удалось подключить голос. Попробуйте ещё раз или напишите текстом.');
       }
@@ -84,6 +88,7 @@ export function useVoiceSession({ onTranscript }: Options) {
       const session = await createVoiceSession(tenantId);
       createdSessionId = session.session_id;
       setSessionId(session.session_id);
+      setSessionTenantId(tenantId);
       setState('connecting');
       const client = new VoiceWsClient({
         onState: setState,
@@ -101,6 +106,7 @@ export function useVoiceSession({ onTranscript }: Options) {
         await endVoiceSession(createdSessionId).catch(() => undefined);
       }
       setSessionId(null);
+      setSessionTenantId(null);
       setState('degraded');
       setNotice(
         error instanceof Error
@@ -125,12 +131,14 @@ export function useVoiceSession({ onTranscript }: Options) {
       }
     }
     setSessionId(null);
+    setSessionTenantId(null);
     setStartedAt(null);
     setState('ended');
   }, [sessionId]);
 
   const switchToText = useCallback(async () => {
     setNotice(null);
+    setTextPreferred(true);
     if (env.demoMode) {
       setState('degraded');
       return;
@@ -147,6 +155,7 @@ export function useVoiceSession({ onTranscript }: Options) {
 
   const resumeVoiceInput = useCallback(async (): Promise<boolean> => {
     setNotice(null);
+    setTextPreferred(false);
     if (env.demoMode) {
       setState('listening');
       return true;
@@ -174,6 +183,8 @@ export function useVoiceSession({ onTranscript }: Options) {
     setNotice(null);
     setStartedAt(null);
     setSessionId(null);
+    setSessionTenantId(null);
+    setTextPreferred(false);
     setState('idle');
   }, []);
 
@@ -187,6 +198,8 @@ export function useVoiceSession({ onTranscript }: Options) {
     state,
     notice,
     sessionId,
+    sessionTenantId,
+    textPreferred,
     startedAt,
     channelLabel,
     wsMock: wsVoiceConfigured,

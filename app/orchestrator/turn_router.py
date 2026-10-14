@@ -81,8 +81,10 @@ _PHRASES: tuple[tuple[SocialAct, str], ...] = (
     ),
     (
         SocialAct.CORRECTION,
-        r"(?:это\s+)?не\s+(?:то|так|об\s+этом|про\s+это)"
-        r"|(?:вы|ты)\s+(?:меня\s+)?не\s+(?:так\s+)?понял[аи]?",
+        r"(?:это\s+)?не\s+(?:то|об\s+этом|про\s+это)"
+        r"|не\s+так(?!\s+давно)"
+        r"|(?:вы|ты)\s+(?:меня\s+)?не\s+(?:так\s+)?понял[аи]?"
+        r"|нет,\s*я\s+имел[аи]?\s+в\s+виду",
     ),
     (
         SocialAct.ACK,
@@ -103,7 +105,7 @@ _SOCIAL_PATTERNS: tuple[tuple[SocialAct, re.Pattern[str], re.Pattern[str]], ...]
 _AFFIRM = re.compile(r"^(?:да|конечно|давайте|давай|можно|да\s+давайте)$", re.IGNORECASE)
 _DECLINE = re.compile(r"^(?:нет|не\s+надо|не\s+нужно|нет\s+не\s+надо)$", re.IGNORECASE)
 # Leading phrases kept when real content follows ("пока не работает", "не так давно ...").
-_LEAD_ONLY_WHEN_ALONE = frozenset({SocialAct.GOODBYE, SocialAct.ACK, SocialAct.CORRECTION})
+_LEAD_ONLY_WHEN_ALONE = frozenset({SocialAct.GOODBYE, SocialAct.ACK})
 _FILLER = re.compile(r"^(?:э+|м+|а+|ну|так|слушайте|слушай)$", re.IGNORECASE)
 _ELLIPSIS_START = re.compile(r"^(?:а|и)\b", re.IGNORECASE)
 _ANAPHORA = re.compile(
@@ -179,6 +181,8 @@ def route_turn(
     elliptic = len(terms) <= _MAX_ELLIPTIC_TERMS and bool(
         _ELLIPSIS_START.match(remainder) or _ANAPHORA.search(remainder)
     )
+    if SocialAct.CORRECTION in unique_acts and remainder and has_history:
+        return RoutedTurn(TurnKind.FOLLOW_UP, unique_acts, original, remainder, informal)
     if has_history and (not terms or elliptic):
         return RoutedTurn(TurnKind.FOLLOW_UP, unique_acts, original, remainder, informal)
 

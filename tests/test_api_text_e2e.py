@@ -216,12 +216,26 @@ def test_ws_bound_session_yields_tts(api_client):
             }
         )
         chunks = []
+        saw_answer = False
         while True:
             message = websocket.receive_json()
+            if message["type"] == "AnswerEvent":
+                saw_answer = True
+                assert message["payload"]["answer_text"]
+                sources = message["payload"]["sources"]
+                assert isinstance(sources, list)
+                assert sources
+                assert all(
+                    item.get("chunk_id") and item.get("canonical_url") and item.get("title")
+                    for item in sources
+                )
+                continue
+            assert saw_answer, "AnswerEvent with sources must arrive before first TTSChunkEvent"
             assert message["type"] == "TTSChunkEvent"
             chunks.append(message["payload"])
             if message["payload"]["is_last_chunk"] is True:
                 break
+        assert saw_answer
         assert chunks
         assert any(item["audio_base64"] for item in chunks)
         assert chunks[0]["generation_id"] == chunks[0]["turn_id"]
@@ -247,6 +261,8 @@ def test_ready_200_without_openrouter_key(api_client, monkeypatch):
     assert body["checks"]["voice"] == "mock"
     assert body["checks"]["knowledge"]["backend"] == "stub"
     assert "openrouter" not in body["checks"]
+    assert body["checks"]["llm"]["provider"] == "mock"
+    assert body["checks"]["llm"]["model_id"] == LLM_MODEL
 
 
 def test_ready_503_empty_runtime(api_client, monkeypatch):

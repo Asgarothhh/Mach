@@ -1,6 +1,8 @@
 from pydantic import BaseModel
 from typing import Optional
 
+from app.schemas.api import SourceRef
+
 class BaseEvent(BaseModel):
     session_id: str
     turn_id: str
@@ -44,3 +46,11 @@ class InterruptionEvent(BaseModel):
     session_id: str
     interrupted_turn_id: str
     timestamp_ms: int
+
+
+class AnswerEvent(BaseEvent):
+    """Grounded/fallback answer text, sent over WS before TTS starts."""
+    answer_text: str
+    answer_status: str
+    citation_ids: list[str] = []
+    sources: list[SourceRef] = []

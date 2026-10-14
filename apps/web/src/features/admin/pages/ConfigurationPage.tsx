@@ -1,18 +1,31 @@
 import { Eye, LockKeyhole, Save, ShieldCheck } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { SectionHeading } from '../../../shared/components/SectionHeading';
 import { StatusBadge } from '../../../shared/components/StatusBadge';
 import { AdminPanel } from '../components/AdminPrimitives';
 import { env } from '../../../shared/config/env';
 import { useTenant } from '../../tenant/model/TenantContext';
 
+type LlmCheck = { provider?: string; model_id?: string };
+
 export function ConfigurationPage() {
   const [temperature, setTemperature] = useState('0.2');
   const [maxTokens, setMaxTokens] = useState('300');
   const [guardrails, setGuardrails] = useState(true);
   const [notice, setNotice] = useState(false);
-  const [externalLlmAllowed, setExternalLlmAllowed] = useState(false);
+  const [llm, setLlm] = useState<LlmCheck | null>(null);
   const { tenantName, tenantId } = useTenant();
+  const externalLlmAllowed = llm?.provider === 'openrouter';
+
+  useEffect(() => {
+    const origin = env.apiBaseUrl.replace(/\/api\/v1$/i, '');
+    void fetch(`${origin}/health/ready`, { headers: { Accept: 'application/json' } })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((body: { checks?: { llm?: LlmCheck } } | null) => {
+        if (body?.checks?.llm) setLlm(body.checks.llm);
+      })
+      .catch(() => undefined);
+  }, []);
 
   return (
     <div className="admin-page-stack">
@@ -31,7 +44,7 @@ export function ConfigurationPage() {
       </div>
       <AdminPanel title="Политика обработки реальных звонков" eyebrow="Безопасность">
         <div className="track-info-panel track-info-panel--privacy"><ShieldCheck size={19} /><div><strong>Внешняя модель для реальных звонков выключена</strong><p>Для телефонных звонков внешняя модель не используется без отдельного согласования. Этот переключатель относится только к демонстрации и не сохраняет настройку на сервере.</p></div></div>
-        <label className="toggle-row"><span><strong>Разрешить внешний LLM для synthetic demo</strong><small>Не включает вызовы для реального телефонного трафика</small></span><input type="checkbox" checked={externalLlmAllowed} onChange={(event) => { if (env.demoMode) setExternalLlmAllowed(event.target.checked); }} disabled={!env.demoMode} /></label>
+        <label className="toggle-row"><span><strong>Внешний LLM для synthetic demo</strong><small>Включён, когда /health/ready сообщает provider=openrouter. Не относится к реальному телефонному трафику.</small></span><input type="checkbox" checked={externalLlmAllowed} readOnly disabled /></label>
         <div className="policy-detail"><strong>Обязательные ограничения</strong><div><span>tenant_id</span><code>{tenantId}</code></div><div><span>External LLM for real calls</span><code>false until approval</code></div><div><span>Raw audio storage</span><code>false</code></div><div><span>Provider fallback</span><code>fail closed</code></div></div>
       </AdminPanel>
 
@@ -40,17 +53,12 @@ export function ConfigurationPage() {
           <div className="form-stack">
             <label>
               <span>Основная модель (model ID)</span>
-              <select defaultValue="qwen/qwen3-32b" disabled={!env.demoMode || !externalLlmAllowed}>
-                <option value="qwen/qwen3-32b">qwen/qwen3-32b · demo profile</option>
-                <option value="open-model-fast">fast-model · placeholder</option>
-              </select>
+              <input value={llm?.model_id || 'google/gemma-4-26b-a4b-it'} readOnly />
+              <small>Провайдер: {llm?.provider || 'неизвестно'}</small>
             </label>
             <label>
               <span>Резервная модель</span>
-              <select defaultValue="fast-model" disabled={!env.demoMode || !externalLlmAllowed}>
-                <option value="fast-model">fast-model · placeholder</option>
-                <option value="none">Без внешнего fallback</option>
-              </select>
+              <input value="нет внешнего fallback" readOnly />
             </label>
             <div className="form-grid-two">
               <label><span>Temperature</span><input value={temperature} onChange={(event) => setTemperature(event.target.value)} inputMode="decimal" /></label>

@@ -18,6 +18,7 @@ export const defaultDemoTenant: TenantProfile = {
   human_transfer_enabled: true,
   consent_notice: 'Разговор может обрабатываться для подготовки ответа. Если вы не согласны, попросите соединить вас с сотрудником.',
   consent_notice_version: 'notice-r1',
+  support_url: undefined,
 };
 
 const mtsPublicDemoTenant: TenantProfile = {
@@ -25,6 +26,7 @@ const mtsPublicDemoTenant: TenantProfile = {
   tenant_id: 'mts-public-demo',
   display_name: 'MTS public (demo)',
   greeting: 'Здравствуйте! Это демо-корпус публичных материалов МТС.',
+  support_url: 'https://help.mts.by/',
 };
 
 const fixtureOnlyTenant: TenantProfile = {

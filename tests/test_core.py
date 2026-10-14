@@ -25,11 +25,11 @@ def test_state_machine_transitions():
 async def test_rbac_access():
     from app.api.deps import verify_transcript_access
 
-    valid_admin = AdminUser(username="admin1", role="support_supervisor", tenant_id="t1")
+    valid_admin = AdminUser(username="admin1", role="support_supervisor", tenant_scope=["t1"])
     result = await verify_transcript_access(valid_admin)
     assert result == valid_admin
 
-    invalid_admin = AdminUser(username="user1", role="viewer", tenant_id="t1")
+    invalid_admin = AdminUser(username="user1", role="viewer", tenant_scope=["t1"])
     with pytest.raises(HTTPException) as exc_info:
         await verify_transcript_access(invalid_admin)
     assert exc_info.value.status_code == 403
@@ -46,3 +46,11 @@ def test_session_binding_set_once():
     assert manager.get_binding("s1").tenant_id == "mts-public-demo"
     manager.unbind("s1")
     assert manager.get_binding("s1") is None
+
+
+def test_closed_session_ignores_non_closed_transition():
+    manager = SessionManager()
+    manager.transition("s1", SessionState.LISTENING)
+    manager.transition("s1", SessionState.CLOSED)
+    manager.transition("s1", SessionState.LISTENING)
+    assert manager.active_sessions["s1"] == SessionState.CLOSED

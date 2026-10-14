@@ -1,5 +1,5 @@
 import { apiRequest } from '../../../shared/api/http';
-import { withDemoFallback } from '../../../shared/api/stage1Fallback';
+import { withDemoFallbackSource, type DemoFallbackSource } from '../../../shared/api/stage1Fallback';
 import { env } from '../../../shared/config/env';
 import type { ScenarioDraftInput, ScenarioProfile, ScenarioVersionRecord } from '../../../shared/types/track1';
 import { demoScenarioStore } from '../data/demoScenarios';
@@ -73,17 +73,16 @@ export async function validateScenarioDraft(tenantId: string, input: ScenarioDra
   if (!input.rules.some((rule) => rule.enabled)) return { valid: false, errors: ['Включите хотя бы одно правило маршрутизации.'], warnings: [] };
   if (input.rules.some((rule) => !rule.label.trim() || !rule.match_description.trim())) return { valid: false, errors: ['У каждого правила должны быть название и условие.'], warnings: [] };
   if (env.demoMode) return validDemoDraft();
-  // Proposed validation path; align with backend OpenAPI before leaving demo mode.
-  return withDemoFallback(
+  const { value } = await withDemoFallbackSource(
     () => apiRequest<ScenarioValidationResult>(`/tenants/${encodeURIComponent(tenantId)}/scenarios/validate`, { method: 'POST', body: input }),
     () => validDemoDraft(),
   );
+  return value;
 }
 
-export async function listScenarios(tenantId: string): Promise<ScenarioProfile[]> {
-  if (env.demoMode) return listDemoScenarios(tenantId);
-  // GET collection path is inferred for the editor and must be confirmed against backend OpenAPI.
-  return withDemoFallback(
+export async function listScenarios(tenantId: string): Promise<{ value: ScenarioProfile[]; source: DemoFallbackSource }> {
+  if (env.demoMode) return { value: listDemoScenarios(tenantId), source: 'local' };
+  return withDemoFallbackSource(
     () => apiRequest<ScenarioProfile[]>(`/tenants/${encodeURIComponent(tenantId)}/scenarios`),
     () => listDemoScenarios(tenantId),
   );
@@ -91,34 +90,37 @@ export async function listScenarios(tenantId: string): Promise<ScenarioProfile[]
 
 export async function listScenarioVersions(tenantId: string, scenarioId: string): Promise<ScenarioVersionRecord[]> {
   if (env.demoMode) return listDemoScenarioVersions(tenantId, scenarioId);
-  // Version history endpoint is implied by the Track 1 version/diff requirement; confirm its schema in OpenAPI.
-  return withDemoFallback(
+  const { value } = await withDemoFallbackSource(
     () => apiRequest<ScenarioVersionRecord[]>(`/tenants/${encodeURIComponent(tenantId)}/scenarios/${encodeURIComponent(scenarioId)}/versions`),
     () => listDemoScenarioVersions(tenantId, scenarioId),
   );
+  return value;
 }
 
-export async function saveScenarioDraft(tenantId: string, input: ScenarioDraftInput, scenarioId?: string): Promise<ScenarioProfile> {
-  if (env.demoMode) return saveDemoScenarioDraft(tenantId, input, scenarioId);
-  return withDemoFallback(
+export async function saveScenarioDraft(tenantId: string, input: ScenarioDraftInput, scenarioId?: string): Promise<{ value: ScenarioProfile; source: DemoFallbackSource }> {
+  if (env.demoMode) return { value: saveDemoScenarioDraft(tenantId, input, scenarioId), source: 'local' };
+  return withDemoFallbackSource(
     () => apiRequest<ScenarioProfile>(`/tenants/${encodeURIComponent(tenantId)}/scenarios`, { method: 'POST', body: { ...input, ...(scenarioId ? { scenario_id: scenarioId } : {}) } }),
     () => saveDemoScenarioDraft(tenantId, input, scenarioId),
   );
 }
 
-export async function publishScenario(tenantId: string, scenario: ScenarioProfile): Promise<void> {
-  if (env.demoMode) return publishDemoScenario(scenario);
-  await withDemoFallback(
+export async function publishScenario(tenantId: string, scenario: ScenarioProfile): Promise<DemoFallbackSource> {
+  if (env.demoMode) {
+    publishDemoScenario(scenario);
+    return 'local';
+  }
+  const { source } = await withDemoFallbackSource(
     () => apiRequest<unknown>(`/tenants/${encodeURIComponent(tenantId)}/scenarios/${encodeURIComponent(scenario.revision_id)}/publish`, { method: 'POST', body: {} }),
     () => publishDemoScenario(scenario),
   );
+  return source;
 }
 
 
-export async function rollbackScenario(tenantId: string, scenarioId: string, revisionId: string): Promise<ScenarioProfile> {
-  if (env.demoMode) return rollbackDemoScenario(tenantId, scenarioId, revisionId);
-  // Proposed control-plane route; align with backend OpenAPI before switching out of demo mode.
-  return withDemoFallback(
+export async function rollbackScenario(tenantId: string, scenarioId: string, revisionId: string): Promise<{ value: ScenarioProfile; source: DemoFallbackSource }> {
+  if (env.demoMode) return { value: rollbackDemoScenario(tenantId, scenarioId, revisionId), source: 'local' };
+  return withDemoFallbackSource(
     () => apiRequest<ScenarioProfile>(`/tenants/${encodeURIComponent(tenantId)}/scenarios/${encodeURIComponent(revisionId)}/rollback`, { method: 'POST', body: { scenario_id: scenarioId } }),
     () => rollbackDemoScenario(tenantId, scenarioId, revisionId),
   );

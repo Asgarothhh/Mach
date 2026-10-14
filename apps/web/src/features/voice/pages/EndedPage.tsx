@@ -1,24 +1,23 @@
-import { useState } from 'react';
-import { CheckCircle2, MessageSquare, RotateCcw, ThumbsDown, ThumbsUp } from 'lucide-react';
+import { CheckCircle2, MessageSquare, RotateCcw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { MessageBubble } from '../../../shared/components/MessageBubble';
 import { StatusBadge } from '../../../shared/components/StatusBadge';
 import { env } from '../../../shared/config/env';
+import { pluralRu } from '../../../shared/lib/pluralRu';
 import { useVoiceExperience } from '../model/VoiceExperienceContext';
-
-type Rating = 'yes' | 'no' | null;
 
 export function EndedPage() {
   const { conversation, voice } = useVoiceExperience();
   const navigate = useNavigate();
-  const [rating, setRating] = useState<Rating>(null);
 
   function newConversation() {
     conversation.clearConversation();
     voice.reset();
-    setRating(null);
     navigate('/');
   }
+
+  const count = conversation.messages.length;
+  const countLabel = `${count} ${pluralRu(count, 'сообщение', 'сообщения', 'сообщений')}`;
 
   return (
     <section className="ended-page">
@@ -35,7 +34,7 @@ export function EndedPage() {
       <div className="ended-layout">
         <section className="dialog-panel">
           <div className="panel-heading">
-            <div><h2>История текущей сессии</h2><p className="muted-copy">{conversation.messages.length} сообщений · {env.demoMode ? 'синтетический пример' : 'текущая сессия'}</p></div>
+            <div><h2>История текущей сессии</h2><p className="muted-copy">{countLabel} · {env.demoMode ? 'синтетический пример' : 'текущая сессия'}</p></div>
           </div>
           <div className="dialog-panel__messages">
             {conversation.messages.map((message) => <MessageBubble key={message.id} message={message} />)}
@@ -43,14 +42,9 @@ export function EndedPage() {
         </section>
 
         <aside className="side-info-card">
-          <h2>Помощник был полезен?</h2>
-          <p className="muted-copy">Оцените именно этот разговор.</p>
-          <div className="rating-actions">
-            <button type="button" className={`rating-button ${rating === 'yes' ? 'is-selected' : ''}`} onClick={() => setRating('yes')} aria-pressed={rating === 'yes'}><ThumbsUp size={20} /> Да</button>
-            <button type="button" className={`rating-button ${rating === 'no' ? 'is-selected' : ''}`} onClick={() => setRating('no')} aria-pressed={rating === 'no'}><ThumbsDown size={20} /> Нет</button>
-          </div>
-          {rating && <p className="inline-success">Спасибо за отзыв. В этом макете оценка не отправляется на сервер.</p>}
-          <div className="scope-note"><MessageSquare size={16} /><span>Это был browser test call. В тесте не выполнялись реальные действия и не использовались данные клиентов.</span></div>
+          <h2>Сессия завершена</h2>
+          <p className="muted-copy">Оценка этого разговора на стенде не собирается.</p>
+          <div className="scope-note"><MessageSquare size={16} /><span>Это был разговор в браузере. Реальные действия с данными клиентов не выполнялись.</span></div>
         </aside>
       </div>
     </section>

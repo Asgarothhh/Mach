@@ -77,6 +77,8 @@ Smoke API: `python scripts/smoke_test.py` (нужен поднятый API).
 
 ## 4. UI
 
+Показ жюри (чеклист, сценарий, что не заявлять): [`JURY_DEMO.md`](JURY_DEMO.md).
+
 * Frontend compose: [http://localhost:3000](http://localhost:3000) (`VITE_DEMO_MODE=false`, текстовый режим ходит в `/turns/text`).
 * Локальный Vite: `cd apps/web && cp .env.example .env &&` выставьте `VITE_DEMO_MODE=false`, `VITE_BACKEND_TEXT_TEST=true`, затем `npm run dev` → [http://localhost:5173](http://localhost:5173).
 * Swagger: [http://localhost:8000/docs](http://localhost:8000/docs)
@@ -209,9 +211,12 @@ stub **не** подключается: `RetrievalUnavailable`, ready 503.
 ## 8. BLOCKED на этом стенде
 
 * LiveKit и media token в `POST /sessions` (SSOT §9 / §15).
-* SIP / МТС-транк — нет credentials.
+* SIP / МТС-транк — **BLOCKED**. Нет credentials; мастер подключения не предлагает живой SIP и не создаёт SIP-сессию.
 * Crawler live URL (ingestion worker всё ещё stub). Production-калибровка порогов RAG.
-* `/admin/knowledge/*`, `/tenants`, `/calls`, scenarios, analytics — UI в demo/disabled. В публичной сборке (`VITE_DEMO_MODE=false`) экраны «Подключение» и «Сценарии» при 404 на `/tenants*` деградируют на локальные фикстуры (`src/shared/api/stage1Fallback.ts`), чтобы не показывать сырую ошибку API; запись идёт только в память браузера. Созданные так тенанты не попадают в переключатель и не становятся активными, а живые сессии всегда идут с бэкенд-тенантом (`acme-it-demo` / `mts-public-demo`, `resolveSessionTenantId`) — иначе `POST /sessions` вернул бы 404 `tenant_not_available`. Когда бэкенд реализует control-plane ручки, фолбэк перестаёт срабатывать сам.
+* Полная аутентификация админки — нет. При `ENVIRONMENT=demo` (см. `.env.example`) `GET /api/v1/admin/sessions*` выдаёт demo-principal, ограниченный `acme-it-demo` и `mts-public-demo`. Иначе 401. Caddyfile живёт вне репозитория (`/etc/caddy/Caddyfile` на VPS); в репозиторий его не добавляем.
+* `/admin/knowledge/*`, `/tenants`, `/calls`, scenarios, analytics — UI в demo/disabled. В публичной сборке (`VITE_DEMO_MODE=false`) экраны «Подключение» и «Сценарии» при 404 на `/tenants*` деградируют на локальные фикстуры (`src/shared/api/stage1Fallback.ts`). Профили мастера и сценарии сохраняются **только в браузере** и не влияют на ответы помощника. Созданные так тенанты не попадают в переключатель; живые сессии всегда идут с бэкенд-тенантом (`acme-it-demo` / `mts-public-demo`, `resolveSessionTenantId`).
+* Админ-мониторинг сессий работает для двух demo-tenant при `ENVIRONMENT=demo`. Tenant isolation — FR-09; чужой `tenant_id` в query → 403, чужая сессия в detail → 404.
+* Rate limit (`text_turn` 20/мин на сессию и 60/мин на IP, `create_session` 10/мин на IP) использует `X-Forwarded-For`. За прокси запускайте `uvicorn --proxy-headers --forwarded-allow-ips=<адрес Caddy или 127.0.0.1>`. Без этих флагов лимит привязывается к адресу прокси, а не клиента.
 * Chatterbox / Kokoro / Piper / Whisper как default cascade.
 * Synthetic-demo LLM: `google/gemma-4-26b-a4b-it` via OpenRouter (allowlist always includes Gemma). `OPENROUTER_REQUIRE_ZDR` does not attach `zdr` for Gemma (no ZDR route). EXTERNAL_LLM_ALLOWED for real telephony remains false.
 

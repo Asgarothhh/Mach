@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowLeft, Clock3, FileText, Headphones, History, MessageSquare, PencilLine, Save, ShieldCheck, UserRound, X } from 'lucide-react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { SectionHeading } from '../../../shared/components/SectionHeading';
 import { StatusBadge } from '../../../shared/components/StatusBadge';
 import { env } from '../../../shared/config/env';
+import { ApiError } from '../../../shared/api/http';
+import { pluralRu } from '../../../shared/lib/pluralRu';
 import { useTenant } from '../../tenant/model/TenantContext';
 import type { CallDetail, TranscriptTurn } from '../../../shared/types/track1';
 import { correctCallTranscript, getCallDetail } from '../services/calls.service';
@@ -31,15 +33,30 @@ export function CallDetailPage() {
   const canEditInCurrentMode = env.demoMode || detail?.permissions?.can_correct_transcript === true; // Production editing is enabled only by a backend-granted permission.
   const canViewOriginal = env.demoMode || detail?.permissions?.can_view_original === true; // Original ASR revisions are protected separately from masked text.
 
-  const load = useCallback(async () => {
+  useEffect(() => {
+    const controller = new AbortController();
     setLoading(true);
     setLoadError(null);
-    try { setDetail(await getCallDetail(callId, tenantId, inAdmin ? 'admin' : 'tenant')); }
-    catch (cause) { setLoadError(cause instanceof Error ? cause.message : 'Не удалось загрузить звонок.'); }
-    finally { setLoading(false); }
+    void getCallDetail(callId, tenantId, inAdmin ? 'admin' : 'tenant', controller.signal)
+      .then((result) => {
+        if (controller.signal.aborted) return;
+        setDetail(result);
+        if (!result) setLoadError('Звонок не найден или недоступен для выбранной компании.');
+      })
+      .catch((cause) => {
+        if (controller.signal.aborted) return;
+        if (cause instanceof ApiError && cause.status === 404) {
+          setLoadError('Звонок не найден или недоступен для выбранной компании.');
+        } else {
+          setLoadError(cause instanceof Error ? cause.message : 'Не удалось загрузить звонок.');
+        }
+        setDetail(null);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
   }, [callId, tenantId, inAdmin]);
-
-  useEffect(() => { void load(); }, [load]);
 
   function beginEdit(turn: TranscriptTurn) {
     setEditing(turn.turn_id);
@@ -73,7 +90,7 @@ export function CallDetailPage() {
 
       <div className="track-call-summary-grid">
         <div className="track-summary-card"><span>Статус</span><strong>{call.status === 'completed' ? 'Завершён' : call.status === 'active' ? 'Активен' : call.status === 'handoff' ? 'Передан' : call.status === 'degraded' ? 'Деградация' : 'Ошибка'}</strong><small>{call.channel === 'telephone' ? 'Входящий телефон' : call.channel === 'test_call' ? 'Тестовый вызов' : 'Браузер'}</small></div>
-        <div className="track-summary-card"><span>Длительность</span><strong>{call.duration_seconds == null ? '—' : `${Math.floor(call.duration_seconds / 60)}:${String(call.duration_seconds % 60).padStart(2, '0')}`}</strong><small>{call.turn_count} ход(а)</small></div>
+        <div className="track-summary-card"><span>Длительность</span><strong>{call.duration_seconds == null ? '—' : `${Math.floor(call.duration_seconds / 60)}:${String(call.duration_seconds % 60).padStart(2, '0')}`}</strong><small>{call.turn_count} {pluralRu(call.turn_count, 'ход', 'хода', 'ходов')}</small></div>
         <div className="track-summary-card"><span>Маршрут</span><strong className="track-summary-card__route"><RouteIcon decision={call.route_decision} />{call.route_decision === 'voice' ? 'Голос' : call.route_decision === 'chat_offer' ? 'Предложен чат' : call.route_decision === 'human_handoff' ? 'Сотруднику' : 'Уточнение'}</strong><small>Согласие: {call.consent_state === 'accepted' ? 'принято' : call.consent_state === 'declined' ? 'отклонено' : call.consent_state === 'pending' ? 'ожидание' : 'демо'}</small></div>
         <div className="track-summary-card"><span>Время до ответа</span><strong>{call.ttfa_ms == null ? '—' : `${call.ttfa_ms} мс`}</strong><small>По этой записи, не гарантия</small></div>
       </div>

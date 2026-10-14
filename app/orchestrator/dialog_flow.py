@@ -36,6 +36,7 @@ from app.orchestrator.state_machine import Exchange, SessionManager, SessionStat
 from app.orchestrator.tts_stream import TTSSentenceStreamer
 from app.orchestrator.turn_router import (
     RoutedTurn,
+    SocialAct,
     TurnKind,
     route_turn,
     social_prefix,
@@ -145,7 +146,8 @@ _STYLE = (
     "Если без недостающего параметра ответ меняется — один короткий уточняющий вопрос и "
     "answer_status=needs_clarification, иначе сначала ответь. Вопрос в конце — только если он "
     "помогает; после исчерпывающего ответа или прощания не нужен. Не повторяй фразы из "
-    "истории и не переспрашивай известное."
+    "истории и не переспрашивай известное. Если пользователь уже поправил формулировку, "
+    "не задавай повторный уточняющий вопрос."
     "</STYLE>\n"
 )
 _OUTPUT_CONTRACT = (
@@ -237,6 +239,7 @@ class TurnOutcome:
     turn_id: str
     answer_text: str
     answer_status: str
+    tenant_id: str | None = None
     citation_ids: list[str] = field(default_factory=list)
     sources: list[dict] = field(default_factory=list)
     fallback_reason: str | None = None
@@ -306,6 +309,7 @@ class DialogOrchestrator:
                 outcome = TurnOutcome(
                     session_id=session_id,
                     turn_id=turn_id,
+                    tenant_id=tenant_id,
                     answer_text=safe_text,
                     answer_status=status,
                     fallback_reason=reason.value,
@@ -336,6 +340,7 @@ class DialogOrchestrator:
                 return TurnOutcome(
                     session_id=session_id,
                     turn_id=turn_id,
+                    tenant_id=tenant_id,
                     answer_text=answer_text,
                     answer_status="needs_clarification",
                 )
@@ -446,7 +451,7 @@ class DialogOrchestrator:
             is_answerable = getattr(result, "is_answerable", True) if result is not None else False
             if retrieval_outcome != "ok" or result is None or not is_answerable:
                 status, reason, safe_text = self._abstention_for_failure(
-                    retrieval_outcome, result
+                    retrieval_outcome, result, routed
                 )
                 safe_text = self._fallback_text(routed, safe_text, previous_answers)
                 self._remember(session_id, user_text, retrieval_query, safe_text, routed)
@@ -471,6 +476,7 @@ class DialogOrchestrator:
                 outcome = TurnOutcome(
                     session_id=session_id,
                     turn_id=turn_id,
+                    tenant_id=tenant_id,
                     answer_text=safe_text,
                     answer_status=status,
                     fallback_reason=reason.value,
@@ -510,6 +516,7 @@ class DialogOrchestrator:
                 outcome = TurnOutcome(
                     session_id=session_id,
                     turn_id=turn_id,
+                    tenant_id=tenant_id,
                     answer_text=safe_text,
                     answer_status=status,
                     fallback_reason=reason.value,
@@ -597,6 +604,7 @@ class DialogOrchestrator:
                     return TurnOutcome(
                         session_id=session_id,
                         turn_id=turn_id,
+                        tenant_id=tenant_id,
                         answer_text=safe_text,
                         answer_status=status,
                         fallback_reason=reason.value,
@@ -638,6 +646,7 @@ class DialogOrchestrator:
                 return TurnOutcome(
                     session_id=session_id,
                     turn_id=turn_id,
+                    tenant_id=tenant_id,
                     answer_text=answer_text,
                     answer_status=answer_status,
                     citation_ids=cited_source_ids,
@@ -676,6 +685,7 @@ class DialogOrchestrator:
                 return TurnOutcome(
                     session_id=session_id,
                     turn_id=turn_id,
+                    tenant_id=tenant_id,
                     answer_text=safe_text,
                     answer_status=status,
                     fallback_reason=reason.value,
@@ -693,6 +703,15 @@ class DialogOrchestrator:
         **kwargs,
     ) -> AsyncGenerator[TTSChunkEvent, None]:
         outcome = await self.run_turn(session_id, asr_text, channel="websocket")
+        async for event in self.stream_tts_for_outcome(session_id, outcome, tenant_id):
+            yield event
+
+    async def stream_tts_for_outcome(
+        self,
+        session_id: str,
+        outcome: TurnOutcome,
+        tenant_id: str | None = None,
+    ) -> AsyncGenerator[TTSChunkEvent, None]:
         context = self.session_manager.active_turns.get(session_id)
         if context is not None and getattr(context, "is_cancelled", False):
             return
@@ -709,7 +728,7 @@ class DialogOrchestrator:
             turn_context = TurnContext(
                 turn_id=outcome.turn_id,
                 session_id=session_id,
-                tenant_id=tenant_id or "demo-tenant-1",
+                tenant_id=tenant_id or outcome.tenant_id or "demo-tenant-1",
             )
         tts_stream = TTSSentenceStreamer(session_id, outcome.turn_id, turn_context)
         self.session_manager.transition(session_id, SessionState.SPEAKING)
@@ -867,7 +886,7 @@ class DialogOrchestrator:
             cancel_task.cancel()
             await asyncio.gather(retrieve_task, cancel_task, return_exceptions=True)
 
-    def _abstention_for_failure(self, retrieval_outcome: str, result):
+    def _abstention_for_failure(self, retrieval_outcome: str, result, routed: RoutedTurn | None = None):
         if retrieval_outcome == "timeout":
             return abstention_for(FallbackReason.RETRIEVAL_TIMEOUT)
         if retrieval_outcome == "invalid":
@@ -877,7 +896,14 @@ class DialogOrchestrator:
         if retrieval_outcome == "unavailable":
             return abstention_for(FallbackReason.RETRIEVAL_UNAVAILABLE)
         if result is not None and hasattr(result, "evidence_status"):
-            return abstention_for(result.evidence_status)
+            evidence = result.evidence_status
+            if (
+                evidence is EvidenceStatus.LOW_RELEVANCE
+                and routed is not None
+                and SocialAct.CORRECTION in routed.acts
+            ):
+                return abstention_for(EvidenceStatus.NO_EVIDENCE)
+            return abstention_for(evidence)
         return abstention_for(FallbackReason.RETRIEVAL_UNAVAILABLE)
 
     async def _persist(self, turn: Turn, event: RetrievalEvent | None) -> None:

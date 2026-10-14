@@ -79,7 +79,7 @@ services:
         VITE_LIVEKIT_URL: ""
         VITE_APP_NAME: MTS Inbound Voice Agent
         VITE_BACKEND_TEXT_TEST: "true"
-        VITE_BACKEND_ADMIN_SESSIONS: "false"
+        VITE_BACKEND_ADMIN_SESSIONS: "true"
         VITE_BACKEND_TEST_TENANT_ID: acme-it-demo
     profiles: ["demo"]
     ports:

@@ -25,6 +25,7 @@ export interface TenantProfile {
   human_transfer_enabled: boolean;
   consent_notice: string;
   consent_notice_version: string;
+  support_url?: string;
 }
 
 export interface TranscriptTurn {

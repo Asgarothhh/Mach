@@ -316,6 +316,7 @@ def test_prompt_contains_style_rules_and_sanitizes_tags():
     assert "не человек" in prompt
     assert "Вопрос в конце — только если он помогает" in prompt
     assert "один короткий" in prompt
+    assert "повторный уточняющий вопрос" in prompt
 
 
 @pytest.mark.parametrize(
@@ -371,6 +372,43 @@ async def test_yes_after_a_social_question_is_not_a_follow_up(demo_runtime, coun
     calls = len(spy.calls)
     await orch.run_turn("s1", "да", channel="text")
     assert len(spy.calls) == calls
+
+
+@pytest.mark.asyncio
+async def test_correction_with_content_follows_up(demo_runtime, counting_llm):
+    spy = SpyRetriever(demo_runtime.retriever)
+    orch, manager, _, _ = make_orchestrator(spy, llm=counting_llm)
+    bind_session(manager, tenant_id=ACME)
+    await orch.run_turn("s1", "какой график работы", channel="text")
+    outcome = await orch.run_turn(
+        "s1", "нет, я имел в виду сколько стоит лицензия", channel="text"
+    )
+    assert "лицензия" in spy.calls[-1]["query"] or "стоит" in spy.calls[-1]["query"]
+    assert "acme-price-1" in outcome.citation_ids
+
+
+@pytest.mark.asyncio
+async def test_correction_low_relevance_uses_no_evidence(demo_runtime, counting_llm):
+    from mts_contracts.knowledge import EvidenceStatus
+
+    class LowRelevance:
+        def __init__(self, inner) -> None:
+            self.inner = inner
+
+        async def retrieve(self, query, **kwargs):
+            result = await self.inner.retrieve(query, **kwargs)
+            return result.model_copy(update={"evidence_status": EvidenceStatus.LOW_RELEVANCE})
+
+    orch, manager, _, _ = make_orchestrator(
+        LowRelevance(demo_runtime.retriever), llm=counting_llm
+    )
+    bind_session(manager, tenant_id=ACME)
+    await orch.run_turn("s1", "какой график работы", channel="text")
+    outcome = await orch.run_turn(
+        "s1", "нет, я имел в виду сколько стоит лицензия", channel="text"
+    )
+    assert outcome.answer_status == "no_evidence"
+    assert outcome.fallback_reason == "no_evidence"
 
 
 @pytest.mark.asyncio

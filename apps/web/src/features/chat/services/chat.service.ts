@@ -11,6 +11,7 @@ export interface SendTextMessageInput {
 
 export interface SendTextMessageResult {
   answer_text: string;
+  tenant_id?: string;
   citation_ids?: string[];
   citations?: SourceCitation[];
   answer_status?: 'grounded' | 'needs_clarification' | 'no_evidence' | 'handoff';

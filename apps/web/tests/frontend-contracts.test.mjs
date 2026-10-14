@@ -67,12 +67,57 @@ test('optional backend text-test bridge uses current REST text-turn contract', a
   const bridge = await read('src/features/chat/services/backendTextTest.service.ts');
   const chatService = await read('src/features/chat/services/chat.service.ts');
   assert.match(envExample, /VITE_BACKEND_TEXT_TEST=false/);
+  assert.match(envExample, /VITE_BACKEND_ADMIN_SESSIONS=true/);
   assert.match(bridge, /method: 'POST'/);
   assert.match(bridge, /\/sessions\/\$\{encodeURIComponent\(sessionId\)\}\/turns\/text/);
   assert.match(bridge, /body: \{ text: input.text \}/);
   assert.match(bridge, /payload\.sources/);
   assert.doesNotMatch(bridge, /new WebSocket/);
   assert.match(chatService, /return sendBackendTextTest\(input\)/);
+});
+
+test('compose and Dockerfile enable backend admin sessions on the demo stand', async () => {
+  const dockerfile = await read('Dockerfile');
+  const compose = await readFile(resolve(root, '../../docker-compose.yml'), 'utf8');
+  assert.match(dockerfile, /ARG VITE_BACKEND_ADMIN_SESSIONS=true/);
+  assert.match(compose, /VITE_BACKEND_ADMIN_SESSIONS:\s*"true"/);
+});
+
+test('clearing the text dialog ends the cached backend session', async () => {
+  const bridge = await read('src/features/chat/services/backendTextTest.service.ts');
+  const textPage = await read('src/features/voice/pages/TextModePage.tsx');
+  const voiceCtx = await read('src/features/voice/model/VoiceExperienceContext.tsx');
+  const tenantCtx = await read('src/features/tenant/model/TenantContext.tsx');
+  assert.match(bridge, /export async function resetBackendTextSession/);
+  assert.match(bridge, /\/sessions\/\$\{encodeURIComponent\(sessionId\)\}\/end/);
+  assert.match(textPage, /await resetBackendTextSession\(\)/);
+  assert.match(voiceCtx, /void resetBackendTextSession\(\)/);
+  assert.match(tenantCtx, /void resetBackendTextSession\(\)/);
+});
+
+test('footer support link uses tenant supportUrl and keeps MTS documents', async () => {
+  const footer = await read('src/shared/components/AppFooter.tsx');
+  assert.match(footer, /useTenant\(\)/);
+  assert.match(footer, /supportUrl/);
+  assert.match(footer, /www\.mts\.by\/company\/comp\/doc/);
+  assert.doesNotMatch(footer, /href="https:\/\/help\.mts\.by\/"/);
+});
+
+test('track1 header wraps by 1456px so 1281–1456 cannot overflow', async () => {
+  const css = await read('src/styles/global.css');
+  const wrapBlock = css.match(/@media \(max-width: 1456px\) \{[\s\S]*?\n\}/);
+  assert.ok(wrapBlock, 'missing 1456px header breakpoint');
+  assert.match(wrapBlock[0], /public-header--track1 \.public-header__inner \{[^}]*flex-wrap: wrap/);
+  assert.match(wrapBlock[0], /height: auto/);
+});
+
+test('voice transcripts keep AnswerEvent citations across TTS partials', async () => {
+  const conversation = await read('src/features/voice/model/useConversation.ts');
+  const voiceWs = await read('src/features/voice/services/voiceWs.service.ts');
+  const types = await read('src/shared/types/voice.ts');
+  assert.match(types, /citations\?: SourceCitation\[\]/);
+  assert.match(voiceWs, /mapAnswerEventCitations/);
+  assert.match(conversation, /event\.citations\?\.length \? event\.citations : existing\?\.citations/);
 });
 
 test('voice WS mock client drops stale generations', async () => {

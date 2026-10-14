@@ -39,8 +39,13 @@ export type SessionStatus =
 
 export interface BackendSessionSummary {
   session_id: string;
+  tenant_id?: string;
   status: SessionStatus;
+  channel?: string;
+  language?: string;
   created_at: string;
+  ended_at?: string | null;
+  turn_count?: number;
 }
 
 export interface BackendTurn {

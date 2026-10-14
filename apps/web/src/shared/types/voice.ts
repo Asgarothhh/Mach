@@ -22,6 +22,7 @@ export interface ConversationMessage {
   final: boolean;
   origin: MessageOrigin;
   citations?: SourceCitation[];
+  interrupted?: boolean;
 }
 
 export interface TranscriptEvent {
@@ -31,6 +32,8 @@ export interface TranscriptEvent {
   role: Exclude<MessageRole, 'system'>;
   language?: string;
   turnId?: string;
+  interrupted?: boolean;
+  citations?: SourceCitation[];
 }
 
 export interface VoiceStatusEvent {

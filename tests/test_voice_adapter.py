@@ -31,6 +31,13 @@ def _frame(amplitude: float) -> bytes:
     return float32_to_pcm16(samples)
 
 
+def _next_tts(websocket) -> dict:
+    while True:
+        message = websocket.receive_json()
+        if message["type"] == "TTSChunkEvent":
+            return message
+
+
 def _drain_tts(websocket, *, limit: int = 20) -> list[dict]:
     chunks = []
     for _ in range(limit):
@@ -92,8 +99,7 @@ def test_second_json_asr_cancels_previous_generation(api_client):
                 },
             }
         )
-        first = websocket.receive_json()
-        assert first["type"] == "TTSChunkEvent"
+        first = _next_tts(websocket)
         old_gen = first["payload"]["generation_id"]
         websocket.send_json(
             {
@@ -144,8 +150,7 @@ def test_pcm_mock_cascade_and_barge_in(api_client, monkeypatch):
                 },
             }
         )
-        first = websocket.receive_json()
-        assert first["type"] == "TTSChunkEvent"
+        first = _next_tts(websocket)
         old_gen = first["payload"]["generation_id"]
 
         for _ in range(12):

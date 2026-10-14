@@ -1,7 +1,7 @@
 import { ExternalLink, PhoneCall, Settings2 } from 'lucide-react';
 import { Link, NavLink } from 'react-router-dom';
 import { env } from '../config/env';
-import { useLocale } from '../i18n/LocaleContext';
+import { useTenant } from '../../features/tenant/model/TenantContext';
 import { Brand } from './Brand';
 import { TenantSwitcher } from './TenantSwitcher';
 
@@ -13,20 +13,19 @@ const navItems = [
 ];
 
 export function AppHeader() {
-  const { locale, setLocale } = useLocale();
+  const { supportUrl } = useTenant();
   return (
     <header className="public-header public-header--track1">
       <div className="public-header__inner">
-        <Link to="/" className="track-header-brand" aria-label="Голосовой помощник МТС — обзор"><Brand /></Link>
+        <div className="track-header-brand"><Brand /></div>
         <nav className="track-main-nav" aria-label="Основная навигация">
           {navItems.map((item) => <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => `track-main-nav__link ${isActive ? 'is-active' : ''}`}>{item.label}</NavLink>)}
         </nav>
         <nav className="public-header__actions" aria-label="Настройки интерфейса">
           <TenantSwitcher />
           {env.demoMode && <span className="demo-badge">Демо</span>}
-          <div className="locale-switch" role="group" aria-label="Язык интерфейса"><button type="button" className={locale === 'ru' ? 'is-active' : ''} onClick={() => setLocale('ru')} aria-pressed={locale === 'ru'}>РУ</button><button type="button" className={locale === 'be' ? 'is-active' : ''} onClick={() => setLocale('be')} aria-pressed={locale === 'be'}>БЕ</button></div>
           <Link className="track-header-admin" to="/admin"><Settings2 size={15} /><span>Админка</span></Link>
-          <a className="support-link" href="https://help.mts.by/" target="_blank" rel="noopener noreferrer">Поддержка <ExternalLink size={14} /></a>
+          {supportUrl ? <a className="support-link" href={supportUrl} target="_blank" rel="noopener noreferrer">Поддержка <ExternalLink size={14} /></a> : null}
           <Link className="track-header-test" to="/voice/permission" title="Голосовой помощник"><PhoneCall size={15} /><span>Голосовой помощник</span></Link>
         </nav>
       </div>
