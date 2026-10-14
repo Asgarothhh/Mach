@@ -118,7 +118,7 @@ async def lifespan(app: FastAPI):
         except Exception as exc:  # noqa: BLE001 - best-effort startup, never swallow BaseException
             logger.error("ensure_tenants_failed", error_class=exc.__class__.__name__)
         try:
-            speech = warmup_live_adapters()
+            speech = await asyncio.to_thread(warmup_live_adapters)
             logger.info("speech_warmup", asr=speech["asr"], tts=speech["tts"])
         except Exception as exc:  # noqa: BLE001 - text path must still start
             logger.error("speech_warmup_failed", error_class=exc.__class__.__name__)

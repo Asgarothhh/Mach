@@ -5,7 +5,7 @@ from typing import Literal
 import pytest
 from mts_contracts.knowledge import RetrievalFilters, RetrievalMode, RetrievalUnavailable
 from mts_rag.qdrant import QdrantHybridRetriever
-from mts_rag.testing import FailingEmbedder, HashingFakeEmbedder, InMemoryQdrantGateway
+from mts_rag.testing import FailingEmbedder, HashingFakeEmbedder, InMemoryQdrantGateway, SlowEmbedder
 
 from app.rag.demo_fixtures import acme_chunks
 from app.rag.retriever import build_knowledge_runtime, seed_revision
@@ -145,6 +145,73 @@ async def test_failed_embed_warmup_fingerprints_sparse_then_new_hybrid_revision(
     sparse_info = await gateway.get_collection(f"kb__acme-it-demo__{sparse_revision}")
     assert sparse_info["config"]["params"]["vectors"] == {}
     await runtime2.close()
+
+
+@pytest.mark.asyncio
+async def test_slow_embedder_does_not_block_sparse_seed(monkeypatch):
+    monkeypatch.setattr("app.rag.retriever._EMBED_WARMUP_TIMEOUT_S", 0.05)
+    gateway = InMemoryQdrantGateway()
+    runtime = build_knowledge_runtime(
+        {"QDRANT_URL": "http://qdrant.test"},
+        gateway=gateway,
+        embedder=SlowEmbedder(delay_s=5.0),
+    )
+    await runtime.start()
+    details = await _wait_seed(runtime)
+    assert details["seed"] == "ok"
+    assert details["embedder"] == "unavailable"
+    assert details["expected_mode"] == "sparse_only"
+    probe = await runtime.probe()
+    assert probe["acme-it-demo"] == "ok"
+    assert probe["mts-public-demo"] == "ok"
+    result = await runtime.retriever.retrieve(
+        ACME_SUFFICIENT_QUERY,
+        tenant_id="acme-it-demo",
+        language="ru",
+        audience="caller",
+        filters=RetrievalFilters(),
+        index_revision="active",
+        deadline_ms=1000,
+    )
+    assert result.index_revision == seed_revision(acme_chunks(), embedder=None)
+    assert result.retrieval_mode is RetrievalMode.SPARSE_ONLY
+    await runtime.close()
+
+
+class _DocumentFailEmbedder(HashingFakeEmbedder):
+    def embed(
+        self, texts: Sequence[str], *, kind: Literal["query", "document"]
+    ) -> list[list[float]]:
+        if kind == "document":
+            raise RuntimeError("document embed failed")
+        return super().embed(texts, kind=kind)
+
+
+@pytest.mark.asyncio
+async def test_hybrid_publish_failure_keeps_sparse_alias():
+    gateway = InMemoryQdrantGateway()
+    runtime = build_knowledge_runtime(
+        {"QDRANT_URL": "http://qdrant.test"},
+        gateway=gateway,
+        embedder=_DocumentFailEmbedder(),
+    )
+    await runtime.start()
+    details = await _wait_seed(runtime)
+    assert details["seed"] == "ok"
+    assert details["expected_mode"] == "sparse_only"
+    probe = await runtime.probe()
+    assert probe["mts-public-demo"] == "ok"
+    result = await runtime.retriever.retrieve(
+        ACME_SUFFICIENT_QUERY,
+        tenant_id="acme-it-demo",
+        language="ru",
+        audience="caller",
+        filters=RetrievalFilters(),
+        index_revision="active",
+        deadline_ms=1000,
+    )
+    assert result.retrieval_mode is RetrievalMode.SPARSE_ONLY
+    await runtime.close()
 
 
 @pytest.mark.asyncio

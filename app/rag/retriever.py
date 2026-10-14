@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import logging
 import os
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -32,11 +31,13 @@ from app.rag.demo_fixtures import (
     acme_chunks,
     mts_chunks,
 )
+from app.security.telemetry import get_logger
 
 _PROBE_QUERY = "probe"
 _PROBE_DEADLINE_MS = 50
 _SEED_QUERY = "warmup"
-logger = logging.getLogger("app.rag.retriever")
+_EMBED_WARMUP_TIMEOUT_S = 20.0
+logger = get_logger("app.rag.retriever")
 
 
 @dataclass(frozen=True)
@@ -285,10 +286,67 @@ async def _seed_loop(
             state.seed = "failed"
             logger.info(
                 "knowledge_seed_retry",
-                extra={"error_class": exc.__class__.__name__, "delay_s": delay},
+                error_class=exc.__class__.__name__,
+                delay_s=delay,
             )
             await asyncio.sleep(delay)
             delay = min(delay * 2, 30.0)
+
+
+async def _warmup_embedder(embedder: DenseEmbedder, timeout_s: float) -> bool:
+    try:
+        async with asyncio.timeout(timeout_s):
+            await asyncio.to_thread(embedder.embed, [_SEED_QUERY], kind="query")
+    except TimeoutError:
+        logger.warning("embedder_warmup_timeout", timeout_s=timeout_s)
+        return False
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - missing/broken weights degrade to sparse-only
+        logger.info("embedder_warmup_failed", error_class=exc.__class__.__name__)
+        return False
+    return True
+
+
+async def _publish_demo_corpora(
+    retriever: QdrantHybridRetriever,
+    embedder: DenseEmbedder | None,
+) -> None:
+    corpora = (
+        (ACME_TENANT_ID, acme_chunks()),
+        (MTS_TENANT_ID, mts_chunks()),
+    )
+    errors: list[BaseException] = []
+    for tenant_id, chunks in corpora:
+        revision = seed_revision(chunks, embedder=embedder)
+        try:
+            await retriever.publish(tenant_id, revision, chunks, activate=True)
+        except Exception as exc:  # noqa: BLE001 - try the other tenant before giving up
+            errors.append(exc)
+            logger.warning(
+                "knowledge_seed_tenant_failed",
+                tenant_id=tenant_id,
+                error_class=exc.__class__.__name__,
+            )
+            continue
+        try:
+            await retriever.retrieve(
+                _SEED_QUERY,
+                tenant_id=tenant_id,
+                language="ru",
+                audience="caller",
+                filters=RetrievalFilters(),
+                index_revision=ACTIVE_INDEX_REVISION,
+                deadline_ms=1_000,
+            )
+        except Exception as exc:  # noqa: BLE001 - alias is already live
+            logger.warning(
+                "knowledge_seed_smoke_failed",
+                tenant_id=tenant_id,
+                error_class=exc.__class__.__name__,
+            )
+    if errors:
+        raise errors[0]
 
 
 async def _seed_once(
@@ -297,28 +355,12 @@ async def _seed_once(
     reranker: Reranker | None,
     state: _QdrantRuntimeState,
 ) -> None:
-    publish_embedder = embedder
-    if embedder is not None:
-        embed_failed = False
-        try:
-            await asyncio.to_thread(embedder.embed, [_SEED_QUERY], kind="query")
-        except asyncio.CancelledError:
-            raise
-        except Exception:  # noqa: BLE001 - missing weights degrade to sparse-only
-            embed_failed = True
-        if embed_failed:
-            retriever.set_embedder(None)
-            publish_embedder = None
-            state.embedder = "unavailable"
-            state.expected_mode = "sparse_only"
-        else:
-            retriever.set_embedder(embedder)
-            publish_embedder = embedder
-            state.embedder = "ok"
-            state.expected_mode = "hybrid"
-    else:
-        state.embedder = "disabled"
-        state.expected_mode = "sparse_only"
+    # Sparse first so /health/ready and retrieve do not wait on BGE-M3 / torch.
+    retriever.set_embedder(None)
+    state.embedder = "unavailable" if embedder is not None else "disabled"
+    state.expected_mode = "sparse_only"
+    await _publish_demo_corpora(retriever, None)
+
     if reranker is not None:
         rerank_failed = False
         try:
@@ -328,19 +370,17 @@ async def _seed_once(
         except Exception:  # noqa: BLE001 - optional reranker
             rerank_failed = True
         state.reranker = "unavailable" if rerank_failed else "ok"
-    corpora = (
-        (ACME_TENANT_ID, acme_chunks()),
-        (MTS_TENANT_ID, mts_chunks()),
-    )
-    for tenant_id, chunks in corpora:
-        revision = seed_revision(chunks, embedder=publish_embedder)
-        await retriever.publish(tenant_id, revision, chunks, activate=True)
-        await retriever.retrieve(
-            _SEED_QUERY,
-            tenant_id=tenant_id,
-            language="ru",
-            audience="caller",
-            filters=RetrievalFilters(),
-            index_revision=ACTIVE_INDEX_REVISION,
-            deadline_ms=1_000,
-        )
+
+    if embedder is None:
+        return
+    if not await _warmup_embedder(embedder, _EMBED_WARMUP_TIMEOUT_S):
+        return
+    retriever.set_embedder(embedder)
+    try:
+        await _publish_demo_corpora(retriever, embedder)
+    except Exception as exc:  # noqa: BLE001 - keep the sparse alias
+        retriever.set_embedder(None)
+        logger.warning("hybrid_seed_failed_keeping_sparse", error_class=exc.__class__.__name__)
+        return
+    state.embedder = "ok"
+    state.expected_mode = "hybrid"
