@@ -83,7 +83,7 @@ export function ConversationPage() {
               <small>В рабочем режиме это место обновляется событиями streaming ASR.</small>
             </section>
           )}
-          {state === 'processing' && <section className="evidence-panel"><div className="panel-heading"><div><span className="section-eyebrow">RAG · SEARCH</span><h2>Найдены материалы по вашему вопросу</h2></div><StatusBadge tone="warning">Проверка</StatusBadge></div><p className="muted-copy">Результаты ниже — демонстрационные примеры, а не подтверждение выполненной индексации.</p><div className="source-stack">{demoSources.map((source) => <SourceCard key={source.id} source={source} />)}</div></section>}
+          {state === 'processing' && <section className="evidence-panel"><div className="panel-heading"><div><span className="section-eyebrow">Поиск</span><h2>Ищем ответ в базе знаний</h2></div><StatusBadge tone="warning">Проверка</StatusBadge></div><p className="muted-copy">Сверяем вопрос с материалами компании. Ответ появится после проверки.</p><div className="source-stack">{demoSources.map((source) => <SourceCard key={source.id} source={source} />)}</div></section>}
           {state === 'speaking' && shownAnswer && <article className="answer-card"><div className="answer-card__label"><span>ИИ-помощник</span><span>Демо-текст</span></div><p>{shownAnswer}</p><div className="answer-card__foot"><ShieldCheck size={15} /> Пример ответа. Фактические утверждения рабочей версии проверяются по актуальным источникам.</div></article>}
 
           <div className="voice-actionbar">
@@ -105,8 +105,8 @@ export function ConversationPage() {
             </div>
             <small>Новая реплика появится здесь после завершения распознавания.</small>
           </section>
-          {(state === 'speaking' || shownSources.length > 0) && <section className="sources-panel"><h2>Проверить самостоятельно</h2><p className="muted-copy">Синтетические источники текущего demo tenant</p><strong className="source-count">Источники · {shownSources.length}</strong><div className="source-stack">{shownSources.map((source) => <SourceCard key={source.id} source={source} compact />)}</div><small>Дата и ревизии в демо — примеры, не результат реального индексирования.</small></section>}
-          <section className="scope-note"><strong>Browser test channel / mock — не телефония</strong><p>Этот экран отправляет PCM16 на WS /api/v1/ws/sessions. Он не доказывает подключение SIP/VoIP и не использует LiveKit, пока VITE_LIVEKIT_URL пуст.</p></section>
+          {(state === 'speaking' || shownSources.length > 0) && <section className="sources-panel"><h2>Проверить самостоятельно</h2><p className="muted-copy">Материалы, на которые опирается ответ</p><strong className="source-count">Источники · {shownSources.length}</strong><div className="source-stack">{shownSources.map((source) => <SourceCard key={source.id} source={source} compact />)}</div><small>Сверяйте факты с указанными страницами компании.</small></section>}
+          <section className="scope-note"><strong>Голосовой помощник в браузере</strong><p>Разговор идёт через браузер. Это не телефонный звонок.</p></section>
         </aside>
       </div>
     </section>

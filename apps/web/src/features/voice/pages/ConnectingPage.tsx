@@ -32,7 +32,7 @@ export function ConnectingPage() {
         <span className="connecting-kicker">{env.demoMode ? 'Демонстрационный сценарий' : 'Подключение ещё не установлено'}</span>
         <h1>{failed ? 'Не удалось подключить голосовой канал' : 'Подключаю голосовой канал'}</h1>
         <Waveform variant="stage" animated={!failed} />
-        <p className="connecting-copy">{failed ? (voice.notice ?? 'Проверьте настройки соединения и попробуйте снова или продолжите текстом.') : env.demoMode ? 'Показываем демонстрационный переход. Реальная голосовая сессия будет доступна после подключения backend и LiveKit.' : 'Готовим соединение. Можно немного подождать или продолжить текстом.'}</p>
+        <p className="connecting-copy">{failed ? (voice.notice ?? 'Проверьте настройки соединения и попробуйте снова или продолжите текстом.') : env.demoMode ? 'Показываем демонстрационный переход. Это не телефонный звонок.' : 'Готовим соединение. Можно немного подождать или продолжить текстом.'}</p>
         <div className="connection-checklist">
           <div><CheckCircle2 size={20} className="check-icon" /><span>Микрофон доступен</span><StatusBadge tone="success">Готово</StatusBadge></div>
           <div>{failed ? <X size={20} className="error-icon" /> : <LoaderCircle size={20} className="loader-icon spin" />}<span>Устанавливаем защищённое соединение</span><StatusBadge tone={failed ? 'danger' : 'neutral'}>{failed ? 'Ошибка' : 'Ожидание'}</StatusBadge></div>

@@ -1,11 +1,11 @@
 # Задача для агента: Этап 1 — живой речевой каскад по test-каналу (+ barge-in)
 
-**Статус:** ✅ выполнено (ML-часть + стык), смоук зелёный
+**Статус:** live-каскад на **хосте** (conda `mach` + extras). Compose demo profile остаётся mock.
 **Дата:** 2026-10-13
 **SSOT:** `docs/SPEC_MTS_VOICE_AGENT_TRACK1.md`; план — `docs/DEV_PLAN_TRACK1.md` (§2, «Этап 1»)
-**Ветки:** ML-стек + стык — `audio` (не влита в main); Backend — `main` (API/оркестратор/RAG-заготовки уже влиты); Frontend — отдельная ветка (не в main).
+**Ветки:** код каскада на `main`. Compose images без torch; live — host processes.
 
-> Итог реализации и runbook — в §8–§9 в конце документа.
+> Host live procedure — §9. Исторический лог стыка — §8. Compose demo не является live ASR/TTS.
 
 ---
 
@@ -187,54 +187,63 @@ print(m.recognize(audio, sample_rate=sr))"
 - Тесты: `.venv/bin/python -m pytest -q` → **540 passed** (вся сюита, включая 4 новых).
 - Сверка с SSOT/планом и ревизия новых изменений main: `docs/ML_SPEC_AUDIT_STAGE1.md`.
 
-## 9. RUNBOOK (как воспроизвести)
+## 9. RUNBOOK — live на хосте (conda `mach`)
 
-### 9.1 Тестовый сайт-консоль (демо для команды)
+Compose demo profile (`docker compose --profile demo up`) остаётся **mock**: нет torch в образах, веса не качаются при `up`. RAG — in-memory fixtures. LiveKit/SIP не сконфигурированы. T-one/VAD скачиваются при первой live-загрузке процесса, не при compose up.
 
-Открывается из браузера: **https://voice.194-146-38-78.sslip.io/**
-
-- страница (микрофон → WS бинарное PCM16@16k, проигрыватель TTS-чанков, текст-режим,
-  метрики TTFA/first_chunk_ms, журнал событий) живёт на демо-машине и отдаётся
-  через VPS Caddy: `voice.194-146-38-78.sslip.io` → `/api/*` на `100.64.0.4:8123`
-  (API, WS включён), остальное → `100.64.0.4:8124` (консоль);
-- на демо-машине это user-юниты `voice-api.service` и `voice-console.service`
-  (`systemctl --user status voice-api voice-console`), модели — локальные;
-- проверка всего пути без браузера:
-  `.venv/bin/python scripts/voice_console_check.py --url https://voice.194-146-38-78.sslip.io`;
-- в консоли: выбери демо-базу (МТС: роуминг/USSD или Acme IT: график/прайс — поиск
-  в демо-фикстурах идёт по совпадению слов, под локальным RAG-стабом), затем «Начать
-  звонок» → удерживай «🎤» (или включи непрерывный режим) → говори; есть чипы-примеры
-  фраз. Заговори поверх ответа — сработает barge-in. **Наушники обязательны**, иначе
-  эхо от колонок вернётся в микрофон и вызовет ложное перебивание (SSOT §5.3).
-- «Отправить текстом» проверяет TTS-ветку без микрофона (JS-путь тот же, что у смоука).
-- TTS-режим: `VOICE_TTS_MODE=real` (по умолчанию, Silero `ru_bogdan`); `off` —
-  детерминированный дубль для юнит-тестов/CI без загрузки весов (ставится в
-  `tests/conftest.py`).
-
-### 9.2 Каскад напрямую (терминалы)
+### 9.1 Подготовка extras и весов (один раз)
 
 ```bash
-# 1) Тестовая БД (host-порт 55432; admin/123789, db=voice_agent)
-docker start mach-e2e-postgres
-
-# 2) API с нашим каскадом (обычно уже запущен юнитом voice-api)
-cd /home/eq/techlb/Mach
-ENVIRONMENT=demo \
-DATABASE_URL=postgresql+asyncpg://admin:123789@127.0.0.1:55432/voice_agent \
-  .venv/bin/python -m uvicorn app.api.main:app --host 127.0.0.1 --port 8123
-
-# 3) E2E-смоук (терминал 2)
-DATABASE_URL=postgresql+asyncpg://admin:123789@127.0.0.1:55432/voice_agent \
-  .venv/bin/python scripts/stage1_e2e_smoke.py
-
-# 4) Тесты/линт
-.venv/bin/python -m pytest -q
-.venv/bin/python -m ruff check speech tests app/voice_agent app/orchestrator/tts_stream.py
+conda run -n mach pip install torch --index-url https://download.pytorch.org/whl/cpu
+conda run -n mach pip install -e ".[vad,asr,tts,tts-stress]"
+conda run -n mach pip install soxr soundfile
+conda run -n mach python scripts/fetch_models.py silero-tts-v5_cis_base_nostress --output-dir models/tts
+conda run -n mach python scripts/fetch_asr_testset.py --synthetic-only --out artifacts/asr_benchmark
 ```
 
-Ожидаемый вывод смоука — `SMOKE PASSED: call -> ASR -> audio answer -> barge-in cancellation -> new answer`.
+TTS: `models/tts/v5_cis_base_nostress.pt`, голос продукта `ru_bogdan` (24 kHz). Синтетические wav для смоука — `ru_ekaterina`. `v5_5_ru` не default.
 
-Env-переопределения ML-части: `ASR_MODEL`, `ASR_DEVICE`, `TTS_MODEL_PATH`, `TTS_VOICE`, `TTS_SAMPLE_RATE`.
+### 9.2 Postgres и миграции
+
+Не `down -v`. Если compose `api`/`voice_agent` держат `:8000`/`:8100`, остановите только их. Host bind — `127.0.0.1`.
+
+```bash
+docker compose --profile demo up -d postgres redis
+docker compose --profile demo stop api voice_agent
+SYNC_DATABASE_URL=postgresql+psycopg2://admin:123789@127.0.0.1:5433/voice_agent \
+  conda run -n mach alembic upgrade head
+```
+
+### 9.3 Host processes
+
+Не подставляйте `.env` `DATABASE_URL=...@postgres` в host uvicorn — override в env процесса.
+
+```bash
+LIVE_ENV="VOICE_ASR_MODE=live VOICE_TTS_MODE=real ASR_MODEL=t-tech/t-one ASR_DEVICE=cpu \
+TTS_MODEL_PATH=models/tts/v5_cis_base_nostress.pt TTS_VOICE=ru_bogdan TTS_SAMPLE_RATE=24000 \
+DATABASE_URL=postgresql+asyncpg://admin:123789@127.0.0.1:5433/voice_agent \
+SYNC_DATABASE_URL=postgresql+psycopg2://admin:123789@127.0.0.1:5433/voice_agent"
+
+conda run -n mach env $LIVE_ENV uvicorn app.api.main:app --host 127.0.0.1 --port 8000
+conda run -n mach env $LIVE_ENV VOICE_AGENT_HOST=127.0.0.1 VOICE_AGENT_PORT=8100 \
+  python -m app.voice_agent.worker
+```
+
+Ожидание: `:8000/health/ready` `voice=live`; `:8100/health/ready` `asr=ok` `tts=ok` `livekit=not_configured`. Первая загрузка T-one может занять минуты.
+
+### 9.4 Smoke
+
+```bash
+conda run -n mach pytest tests/ -m "not integration"
+DATABASE_URL=postgresql+asyncpg://admin:123789@127.0.0.1:5433/voice_agent \
+  conda run -n mach python scripts/stage1_e2e_smoke.py --api http://127.0.0.1:8000
+```
+
+Ожидаемый вывод — `SMOKE PASSED`. Смоук падает, если ASR равен `VOICE_MOCK_ASR_TEXT` или TTS — синус 440 Hz.
+
+Frontend: `cd apps/web && VITE_DEMO_MODE=false VITE_BACKEND_TEXT_TEST=true VITE_API_BASE_URL=http://localhost:8000/api/v1 VITE_LIVEKIT_URL= npm run dev`. Баннер «Browser test channel / mock — не телефония» = не SIP, не доказательство mock ASR.
+
+Env ML: `ASR_MODEL`, `ASR_DEVICE`, `TTS_MODEL_PATH`, `TTS_VOICE`, `TTS_SAMPLE_RATE`.
 
 ## 10. Границы этапа и хвосты
 

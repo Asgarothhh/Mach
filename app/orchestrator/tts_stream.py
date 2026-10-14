@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import re
 import time
@@ -76,7 +77,7 @@ class TTSSentenceStreamer:
         try:
             from app.voice_agent.factory import get_tts_adapter_for_mode
 
-            adapter = get_tts_adapter_for_mode()
+            adapter = await asyncio.to_thread(get_tts_adapter_for_mode)
         except SpeechError:
             # Text-mode degradation: the caller shows fallback_text.
             yield self._event(pcm=b"", is_last=False, fallback_text=text, text=text)

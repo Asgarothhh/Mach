@@ -14,6 +14,7 @@ Design notes:
 from __future__ import annotations
 
 import asyncio
+import copy
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 
@@ -188,6 +189,12 @@ class SileroVADAdapter:
             ) from exc
 
         model = load_silero_vad(onnx=False)
+        return cls.from_loaded_model(model, cfg)
+
+    @classmethod
+    def from_loaded_model(cls, model: object, config: VADConfig | None = None) -> SileroVADAdapter:
+        """Wrap an already-loaded Silero module. Each adapter must own its model."""
+        cfg = config or VADConfig()
         reset_states = getattr(model, "reset_states", None)
 
         def probability(frame: np.ndarray, sample_rate: int) -> float:
@@ -198,8 +205,21 @@ class SileroVADAdapter:
             return float(value)
 
         adapter = cls(probability, cfg)
+        adapter._model = model  # type: ignore[attr-defined]
         adapter._reset_callback = reset_states  # type: ignore[attr-defined]
         return adapter
+
+    def fork(self) -> SileroVADAdapter:
+        """Independent adapter with its own recurrent state (weights copied)."""
+        model = getattr(self, "_model", None)
+        if model is None:
+            # Energy/mock probability functions are stateless.
+            return SileroVADAdapter(self._speech_probability, self.config)
+        try:
+            cloned = copy.deepcopy(model)
+        except Exception:  # noqa: BLE001 - fall back to a fresh package load
+            return type(self).from_pretrained(self.config)
+        return type(self).from_loaded_model(cloned, self.config)
 
     async def stream(self, audio_frames: AsyncIterator[AudioFrame]) -> AsyncIterator[VADEvent]:
         cfg = self.config

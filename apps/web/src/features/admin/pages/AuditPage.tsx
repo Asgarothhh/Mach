@@ -12,7 +12,7 @@ export function AuditPage() {
   return (
     <div className="admin-page-stack">
       <SectionHeading
-        eyebrow="SECURITY EVENTS"
+        eyebrow="Аудит"
         title="Аудит и безопасность"
         description="Доступ к сессиям, маскирование PII, попытки prompt injection и изменение политик."
         action={<StatusBadge tone={hasDemoFixture ? 'demo' : 'neutral'}>{hasDemoFixture ? 'Masked view · demo' : 'Audit API pending'}</StatusBadge>}
@@ -25,7 +25,7 @@ export function AuditPage() {
         <MetricCard label="Denied access" value="2" detail="Пример RBAC отказов" icon={<LockKeyhole size={17} />} tone="red" />
       </div> : <div className="inline-alert inline-alert--info"><ShieldCheck size={17} /><div><strong>{env.demoMode ? 'Для выбранного tenant нет audit fixtures' : 'Audit API не подключён'}</strong><p>Здесь не показываются фиктивные security events. Live-журнал должен приходить из авторизованного backend API.</p></div></div>}
 
-      {hasDemoFixture && <AdminPanel title="Журнал аудита" eyebrow="RECENT EVENTS">
+      {hasDemoFixture && <AdminPanel title="Журнал аудита" eyebrow="Последние события">
         <div className="admin-table-wrap">
           <table className="admin-table">
             <thead><tr><th>Время</th><th>Actor</th><th>Event</th><th>Detail</th><th>Policy</th><th /></tr></thead>
@@ -47,14 +47,14 @@ export function AuditPage() {
       </AdminPanel>}
 
       <div className="admin-grid-two">
-        <AdminPanel title="Границы доверия" eyebrow="DATA POLICY">
+        <AdminPanel title="Границы доверия" eyebrow="Данные">
           <div className="trust-zones">
-            <div><strong>A · Browser</strong><span>Короткоживущий LiveKit token, без server credentials.</span></div>
+            <div><strong>A · Браузер</strong><span>Короткий ключ сессии, без серверных секретов.</span></div>
             <div><strong>B · Trusted services</strong><span>ASR, RAG, guardrails, БД и административный control plane.</span></div>
             <div><strong>C · External LLM</strong><span>Только минимизированный текст и публичные evidence.</span></div>
           </div>
         </AdminPanel>
-        <AdminPanel title="Access policy" eyebrow="RBAC">
+        <AdminPanel title="Права доступа" eyebrow="Роли">
           <div className="role-list">
             <div><strong>viewer</strong><span>Агрегированные метрики и маскированные сессии</span></div>
             <div><strong>support_supervisor</strong><span>Чтение транскриптов и маркировка качества</span></div>

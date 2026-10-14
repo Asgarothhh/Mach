@@ -115,7 +115,7 @@ function BackendAdminSessionDetailPage() {
   return (
     <div className="track-page">
       <SectionHeading
-        eyebrow="BACKEND SESSION DETAIL"
+        eyebrow="Сессия"
         title="Детали сессии"
         description={sessionId}
         action={<div className="track-heading-actions"><Link className="button button--secondary button--small" to="/admin/sessions"><ArrowLeft size={14} /> Все сессии</Link><button type="button" className="button button--secondary button--small" onClick={() => void load()} disabled={loading}><RefreshCw size={14} /> Обновить</button></div>}
@@ -123,7 +123,7 @@ function BackendAdminSessionDetailPage() {
 
       {error && <div className="track-form-error" role="alert">{error}</div>}
       {actionMessage && <div className="track-inline-message is-success" role="status">{actionMessage}{chatLink && <p><a href={chatLink} target="_blank" rel="noopener noreferrer">Открыть ссылку текстового чата</a></p>}</div>}
-      {loading ? <div className="track-empty-state"><span className="loading-dot" />Загружаем детали сессии…</div> : !detail ? <section className="track-panel"><div className="track-empty-state"><ShieldCheck size={26} /><strong>Сессия недоступна</strong><span>Проверьте ID, права доступа и GET /api/v1/admin/sessions/{'{session_id}'}.</span><Link className="button button--secondary button--small" to="/admin/sessions">Вернуться к списку</Link></div></section> : <>
+      {loading ? <div className="track-empty-state"><span className="loading-dot" />Загружаем детали сессии…</div> : !detail ? <section className="track-panel"><div className="track-empty-state"><ShieldCheck size={26} /><strong>Сессия недоступна</strong><span>Проверьте номер обращения и права доступа.</span><Link className="button button--secondary button--small" to="/admin/sessions">Вернуться к списку</Link></div></section> : <>
         <div className="track-call-summary-grid">
           <div className="track-summary-card"><span>Статус</span><strong><StatusBadge tone={sessionStatusTone(detail.status)}>{sessionStatusLabels[detail.status] ?? detail.status}</StatusBadge></strong><small>{detail.status}</small></div>
           <div className="track-summary-card"><span>Создана</span><strong>{formatDate(detail.created_at)}</strong><small>Дата с backend</small></div>
@@ -132,17 +132,17 @@ function BackendAdminSessionDetailPage() {
         </div>
 
         <section className="track-panel">
-          <div className="track-panel__heading"><div><span className="track-eyebrow">SESSION ACTIONS</span><h2>Управление сессией</h2></div><StatusBadge tone={terminal ? 'warning' : 'neutral'}>{terminal ? 'Терминальное состояние' : 'Доступны действия'}</StatusBadge></div>
+          <div className="track-panel__heading"><div><span className="track-eyebrow">Действия</span><h2>Управление сессией</h2></div><StatusBadge tone={terminal ? 'warning' : 'neutral'}>{terminal ? 'Терминальное состояние' : 'Доступны действия'}</StatusBadge></div>
           <div className="track-panel__actions">
             <button type="button" className="button button--secondary button--small" onClick={() => void runAction('human')} disabled={terminal || Boolean(busyAction)}><UserRound size={14} /> {busyAction === 'human' ? 'Передаём…' : 'Передать оператору'}</button>
             <button type="button" className="button button--secondary button--small" onClick={() => void runAction('chat')} disabled={terminal || Boolean(busyAction)}><MessageSquare size={14} /> {busyAction === 'chat' ? 'Переводим…' : 'Перевести в чат'}</button>
             <button type="button" className="button button--primary button--small" onClick={() => void runAction('end')} disabled={terminal || Boolean(busyAction)}><Square size={13} /> {busyAction === 'end' ? 'Завершаем…' : 'Завершить сессию'}</button>
           </div>
-          <p className="track-panel-footnote"><PhoneForwarded size={12} /> Действия вызывают реальные endpoints. Фактическое SIP-переключение или работоспособность ссылки чата зависят от реализации backend.</p>
+          <p className="track-panel-footnote"><PhoneForwarded size={12} /> Действия отправляются в сервис. Перевод на сотрудника или в чат зависит от подключённых каналов.</p>
         </section>
 
         <section className="track-panel">
-          <div className="track-panel__heading"><div><span className="track-eyebrow">TRANSCRIPT</span><h2>Транскрипт сессии</h2></div><StatusBadge tone="neutral">{detail.turns.length} ходов</StatusBadge></div>
+          <div className="track-panel__heading"><div><span className="track-eyebrow">Транскрипт</span><h2>Транскрипт сессии</h2></div><StatusBadge tone="neutral">{detail.turns.length} ходов</StatusBadge></div>
           {detail.turns.length === 0 ? <div className="track-empty-state"><Clock3 size={24} /><strong>Транскриптов пока нет</strong><span>Backend вернул пустой массив turns.</span></div> : <div className="track-transcript-list">{detail.turns.map((turn, index) => <article className="track-transcript-turn" key={turn.turn_id}>
             <div className="track-transcript-turn__meta"><strong>Ход {turn.sequence_no || index + 1}</strong><span>{formatDate(turn.started_at)}</span><span className="track-code-label">{turn.turn_id}</span></div>
             <p>{turn.redacted_text || 'Текст скрыт или отсутствует.'}</p>

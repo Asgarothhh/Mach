@@ -5,17 +5,17 @@ back; then a barge-in check with a second wav.
 
 The API must be already running (see docs/STAGE1_SPEECH_E2E.md):
 
-    ENVIRONMENT=demo \
-    DATABASE_URL=postgresql+asyncpg://admin:123789@127.0.0.1:55432/voice_agent \
-    .venv/bin/python -m uvicorn app.api.main:app --host 127.0.0.1 --port 8123
+    conda run -n mach env VOICE_ASR_MODE=live VOICE_TTS_MODE=real \\
+      DATABASE_URL=postgresql+asyncpg://admin:123789@127.0.0.1:5433/voice_agent \\
+      uvicorn app.api.main:app --host 127.0.0.1 --port 8000
 
 Then run this script with the same DATABASE_URL:
 
-    DATABASE_URL=... .venv/bin/python scripts/stage1_e2e_smoke.py
+    DATABASE_URL=... conda run -n mach python scripts/stage1_e2e_smoke.py --api http://127.0.0.1:8000
 
 Acceptance assertions (Stage-1 gate):
-    * first wav -> a final ASREvent with non-empty text;
-    * the answer arrives as real audio chunks (TTSChunkEvent, PCM base64);
+    * first wav -> a final ASREvent with non-empty live text (not ScriptedRecognizer);
+    * the answer arrives as real audio chunks (not MockTTSAdapter 440 Hz);
     * a second wav sent while the answer is playing triggers an
       InterruptionEvent, and NO chunks of the interrupted generation arrive
       after it;
@@ -77,23 +77,37 @@ def silence_16k(seconds: float) -> bytes:
     return bytes(int(SAMPLE_RATE * seconds) * 2)
 
 
+def mock_asr_text() -> str:
+    from speech.asr.scripted import DEFAULT_MOCK_ASR_TEXT
+
+    return os.getenv("VOICE_MOCK_ASR_TEXT", DEFAULT_MOCK_ASR_TEXT).strip().lower()
+
+
+def peak_fft_hz(pcm: bytes, sample_rate: int) -> float:
+    samples = np.frombuffer(pcm, dtype="<i2").astype(np.float64)
+    if samples.size < 16:
+        return 0.0
+    samples = samples - np.mean(samples)
+    windowed = samples * np.hanning(samples.size)
+    spectrum = np.abs(np.fft.rfft(windowed))
+    freqs = np.fft.rfftfreq(samples.size, d=1.0 / sample_rate)
+    spectrum[0] = 0.0
+    return float(freqs[int(np.argmax(spectrum))])
+
+
 async def ensure_schema() -> None:
+    """Ping Postgres. Alembic must already be applied; do not create_all."""
+    from sqlalchemy import text
     from sqlalchemy.ext.asyncio import create_async_engine
 
-    from app.models.database import Base
-
     engine = create_async_engine(os.environ["DATABASE_URL"])
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    async with engine.connect() as conn:
+        await conn.execute(text("SELECT 1"))
     await engine.dispose()
 
 
 async def ensure_session_row(session_id: str, tenant_id: str) -> None:
-    """Insert the Tenant/Session rows the dialog flow's Turn FK needs.
-
-    Note: POST /api/v1/sessions only keeps sessions in memory today; persisting
-    them is a backend TODO. The smoke creates the rows explicitly.
-    """
+    """Idempotent Tenant/Session rows. POST /api/v1/sessions persists now."""
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
     from app.models.database import Session, Tenant
@@ -236,14 +250,32 @@ async def run(args: argparse.Namespace) -> int:
     if not asr_finals:
         failures.append("no ASR final events at all")
     first_asr_text = asr_finals[0][2] if asr_finals else ""
-    if len(first_asr_text) < 5:
+    if not first_asr_text.strip() or len(first_asr_text.strip()) < 5:
         failures.append(f"first ASR text too short: {first_asr_text!r}")
+    if first_asr_text.strip().lower() == mock_asr_text():
+        failures.append(
+            f"first ASR text equals ScriptedRecognizer/VOICE_MOCK_ASR_TEXT "
+            f"({first_asr_text!r}); live T-one is not on this socket"
+        )
 
     gen1 = meta["gen1"]
     if not gen1:
         failures.append("no TTS audio arrived for the first answer")
-    if gen1 and len(audio_parts.get(gen1, b"")) == 0:
+    gen1_pcm = bytes(audio_parts.get(gen1, b"")) if gen1 else b""
+    gen1_rate = audio_rates.get(gen1 or "", 24000)
+    if gen1 and len(gen1_pcm) == 0:
         failures.append("first generation produced no audio bytes")
+    if gen1_pcm:
+        duration_s = len(gen1_pcm) / 2 / gen1_rate
+        peak_hz = peak_fft_hz(gen1_pcm, gen1_rate)
+        if duration_s <= 0.5:
+            failures.append(
+                f"gen1 audio too short ({duration_s:.2f} s); MockTTSAdapter is a short 440 Hz tone"
+            )
+        if abs(peak_hz - 440.0) <= 20.0:
+            failures.append(
+                f"gen1 peak FFT bin is {peak_hz:.1f} Hz (MockTTSAdapter 440 Hz sine)"
+            )
 
     if meta["interrupted_at"] is None:
         failures.append("barge-in did not produce an InterruptionEvent")
@@ -289,11 +321,11 @@ async def run(args: argparse.Namespace) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--api", default="http://127.0.0.1:8123")
+    parser.add_argument("--api", default="http://127.0.0.1:8000")
     parser.add_argument("--wav1", default=DEFAULT_WAV1)
     parser.add_argument("--wav2", default=DEFAULT_WAV2)
     parser.add_argument("--out", default="artifacts/stage1_e2e")
-    parser.add_argument("--timeout", type=float, default=60.0)
+    parser.add_argument("--timeout", type=float, default=180.0)
     args = parser.parse_args()
     if not os.environ.get("DATABASE_URL"):
         print("DATABASE_URL is required (same value the API runs with)", file=sys.stderr)

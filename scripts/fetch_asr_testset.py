@@ -33,10 +33,7 @@ import wave
 from pathlib import Path
 
 import numpy as np
-import pyarrow.parquet as pq
-import soundfile as sf
 import soxr
-from huggingface_hub import hf_hub_download
 
 RNG = random.Random(42)
 SAMPLE_RATE = 16000
@@ -63,6 +60,8 @@ DOMAIN_PHRASES: list[str] = [
 
 
 def read_wav_bytes(data: bytes) -> tuple[np.ndarray, int]:
+    import soundfile as sf
+
     audio, sample_rate = sf.read(io.BytesIO(data), dtype="float32", always_2d=True)
     return audio.mean(axis=1).astype(np.float32), int(sample_rate)
 
@@ -105,6 +104,9 @@ def add_noise(signal: np.ndarray, snr_db: float, rng: np.random.Generator) -> np
 
 
 def fetch_calls(out_dir: Path, count: int) -> list[dict]:
+    import pyarrow.parquet as pq
+    from huggingface_hub import hf_hub_download
+
     rows: list[dict] = []
     for split_file in (
         "data/test-00000-of-00001.parquet",
@@ -144,6 +146,8 @@ def fetch_calls(out_dir: Path, count: int) -> list[dict]:
 
 
 def fetch_fleurs(out_dir: Path, clean_count: int, noise_count: int) -> list[dict]:
+    from huggingface_hub import hf_hub_download
+
     tsv_path = hf_hub_download("google/fleurs", "data/ru_ru/dev.tsv", repo_type="dataset")
     tar_path = hf_hub_download(
         "google/fleurs", "data/ru_ru/audio/dev.tar.gz", repo_type="dataset"
@@ -288,21 +292,31 @@ def main() -> int:
     parser.add_argument("--calls", type=int, default=110)
     parser.add_argument("--clean", type=int, default=60)
     parser.add_argument("--noise", type=int, default=40)
+    parser.add_argument(
+        "--synthetic-only",
+        action="store_true",
+        help="generate MIT Silero domain phrases only; skip OpenSTT and FLEURS",
+    )
     args = parser.parse_args()
 
     out_dir = Path(args.out)
     entries: list[dict] = []
-    print("fetching OpenSTT telephone calls ...")
-    entries += fetch_calls(out_dir, args.calls)
-    print(f"  calls: {len(entries)}")
-    before = len(entries)
-    print("fetching FLEURS ru (clean + noisy) ...")
-    entries += fetch_fleurs(out_dir, args.clean, args.noise)
-    print(f"  clean/noise: {len(entries) - before}")
-    before = len(entries)
-    print("synthesizing domain phrases (MIT voice) ...")
-    entries += fetch_synthetic(out_dir)
-    print(f"  synthetic: {len(entries) - before}")
+    if args.synthetic_only:
+        print("synthesizing domain phrases (MIT voice, synthetic-only) ...")
+        entries += fetch_synthetic(out_dir)
+        print(f"  synthetic: {len(entries)}")
+    else:
+        print("fetching OpenSTT telephone calls ...")
+        entries += fetch_calls(out_dir, args.calls)
+        print(f"  calls: {len(entries)}")
+        before = len(entries)
+        print("fetching FLEURS ru (clean + noisy) ...")
+        entries += fetch_fleurs(out_dir, args.clean, args.noise)
+        print(f"  clean/noise: {len(entries) - before}")
+        before = len(entries)
+        print("synthesizing domain phrases (MIT voice) ...")
+        entries += fetch_synthetic(out_dir)
+        print(f"  synthetic: {len(entries) - before}")
 
     manifest_path = out_dir / "manifest.jsonl"
     with manifest_path.open("w", encoding="utf-8") as fh:
@@ -314,6 +328,20 @@ def main() -> int:
         categories[entry["category"]] = categories.get(entry["category"], 0) + 1
     total_duration = sum(float(entry["duration"]) for entry in entries)
 
+    provenance = (
+        "- `synthetic-*` — generated locally with MIT-licensed models\n"
+        "  (Silero v5_cis_base_nostress + silero-stress, voice `ru_ekaterina`).\n"
+        if args.synthetic_only
+        else (
+            "- `calls` — mirror of OpenSTT telephone calls (`Malecc/asr_calls_2_val`):\n"
+            "  upstream license NOT stated in the dataset card → **internal evaluation only**,\n"
+            "  do not redistribute or commit the audio.\n"
+            "- `clean`, `clean-noise` — FLEURS ru dev (CC-BY-4.0, Google) + pink-noise\n"
+            "  augmentation generated locally.\n"
+            "- `synthetic-*` — generated locally with MIT-licensed models\n"
+            "  (Silero v5_cis_base_nostress + silero-stress, voice `ru_ekaterina`).\n"
+        )
+    )
     readme = out_dir / "README.md"
     readme.write_text(
         "# Russian ASR test set (voice agent, ML evaluation)\n\n"
@@ -321,13 +349,7 @@ def main() -> int:
         f"- utterances: {len(entries)} (~{total_duration / 60:.1f} min of audio)\n"
         + "".join(f"- {name}: {count}\n" for name, count in sorted(categories.items()))
         + "\n## Licenses / provenance\n\n"
-        "- `calls` — mirror of OpenSTT telephone calls (`Malecc/asr_calls_2_val`):\n"
-        "  upstream license NOT stated in the dataset card → **internal evaluation only**,\n"
-        "  do not redistribute or commit the audio.\n"
-        "- `clean`, `clean-noise` — FLEURS ru dev (CC-BY-4.0, Google) + pink-noise\n"
-        "  augmentation generated locally.\n"
-        "- `synthetic-*` — generated locally with MIT-licensed models\n"
-        "  (Silero v5_cis_base_nostress + silero-stress, voice `ru_ekaterina`).\n",
+        + provenance,
         encoding="utf-8",
     )
 

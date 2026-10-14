@@ -5,7 +5,7 @@ import pytest
 from app.orchestrator.openrouter_client import OpenRouterAdapter
 from app.orchestrator.state_machine import TurnContext
 
-MODEL = "meta-llama/llama-3-8b-instruct"
+MODEL = "google/gemma-4-26b-a4b-it"
 
 
 def _adapter() -> OpenRouterAdapter:

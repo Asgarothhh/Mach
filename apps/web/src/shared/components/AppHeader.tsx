@@ -17,7 +17,7 @@ export function AppHeader() {
   return (
     <header className="public-header public-header--track1">
       <div className="public-header__inner">
-        <Link to="/" className="track-header-brand" aria-label="MTS Inbound Voice Agent — обзор"><Brand /></Link>
+        <Link to="/" className="track-header-brand" aria-label="Голосовой помощник МТС — обзор"><Brand /></Link>
         <nav className="track-main-nav" aria-label="Основная навигация">
           {navItems.map((item) => <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => `track-main-nav__link ${isActive ? 'is-active' : ''}`}>{item.label}</NavLink>)}
         </nav>
@@ -27,7 +27,7 @@ export function AppHeader() {
           <div className="locale-switch" role="group" aria-label="Язык интерфейса"><button type="button" className={locale === 'ru' ? 'is-active' : ''} onClick={() => setLocale('ru')} aria-pressed={locale === 'ru'}>РУ</button><button type="button" className={locale === 'be' ? 'is-active' : ''} onClick={() => setLocale('be')} aria-pressed={locale === 'be'}>БЕ</button></div>
           <Link className="track-header-admin" to="/admin"><Settings2 size={15} /><span>Админка</span></Link>
           <a className="support-link" href="https://help.mts.by/" target="_blank" rel="noopener noreferrer">Поддержка <ExternalLink size={14} /></a>
-          <Link className="track-header-test" to="/voice/permission" title="Browser mic test mode"><PhoneCall size={15} /><span>Тест голоса</span></Link>
+          <Link className="track-header-test" to="/voice/permission" title="Голосовой помощник"><PhoneCall size={15} /><span>Голосовой помощник</span></Link>
         </nav>
       </div>
       {env.demoMode && <div className="demo-topline" aria-label="Включён демонстрационный режим" />}

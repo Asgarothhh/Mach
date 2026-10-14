@@ -48,8 +48,8 @@ function BackendSessionsOverview() {
 
   return (
     <div className="admin-page-stack">
-      <SectionHeading eyebrow="INBOUND SESSION CONTROL" title="Обзор сессий" description={`Реальные данные GET /admin/sessions · ${tenantName}. Метрики ограничены последними 100 сессиями, возвращёнными API.`} action={<div className="track-heading-actions"><StatusBadge tone="success" dot>Backend API</StatusBadge><button type="button" className="button button--secondary button--small" onClick={() => void load()} disabled={loading}><RefreshCw size={14} /> Обновить</button></div>} />
-      <div className="track-info-panel"><ShieldCheck size={17} /><div><strong>Это не полный аналитический endpoint</strong><p>OpenAPI пока предоставляет список сессий, но не aggregate analytics, TTFA или latency breakdown. Числа ниже рассчитываются только по выборке до 100 записей.</p></div></div>
+      <SectionHeading eyebrow="Админка" title="Обзор сессий" description={`Сессии компании ${tenantName}. Показаны до 100 последних записей.`} action={<div className="track-heading-actions"><StatusBadge tone="success" dot>Сервис подключён</StatusBadge><button type="button" className="button button--secondary button--small" onClick={() => void load()} disabled={loading}><RefreshCw size={14} /> Обновить</button></div>} />
+      <div className="track-info-panel"><ShieldCheck size={17} /><div><strong>Это обзор по выборке</strong><p>Полная аналитика задержек пока недоступна. Числа ниже считаются по последним 100 сессиям.</p></div></div>
       {error && <div className="notice notice--warning" role="alert">{error}</div>}
       {loading && <div className="track-empty-state"><span className="loading-dot" />Загружаем реальные сессии…</div>}
       {!loading && !error && <>
@@ -63,11 +63,11 @@ function BackendSessionsOverview() {
           <MetricCard label="Созданы сегодня" value={String(todayCount)} detail="В пределах загруженной выборки" icon={<Clock3 size={17} />} />
           <MetricCard label="Деградация" value={String(degradedCount)} detail="DEGRADED в выборке" icon={<AlertTriangle size={17} />} tone={degradedCount ? 'amber' : undefined} />
         </div>
-        <AdminPanel title="Последние сессии" eyebrow="LIVE API DATA" action={<Link className="button button--secondary button--small" to="/admin/sessions">Все сессии <ArrowUpRight size={14} /></Link>}>
+        <AdminPanel title="Последние сессии" eyebrow="Текущие данные" action={<Link className="button button--secondary button--small" to="/admin/sessions">Все сессии <ArrowUpRight size={14} /></Link>}>
           {sessions.length === 0 ? <div className="track-empty-state">Backend пока не вернул сессий для выбранного tenant.</div> : <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Session ID</th><th>Создана</th><th>Статус</th><th /></tr></thead><tbody>{sessions.slice(0, 8).map((session) => <tr key={session.session_id}><td><Link className="table-action-link" to={`/admin/sessions/${encodeURIComponent(session.session_id)}`}>{session.session_id}</Link></td><td>{new Date(session.created_at).toLocaleString('ru-RU')}</td><td><StatusBadge tone={sessionStatusTone(session.status)}>{sessionStatusLabels[session.status] ?? session.status}</StatusBadge></td><td><Link className="table-action-link" to={`/admin/sessions/${encodeURIComponent(session.session_id)}`}>Детали <ArrowUpRight size={13} /></Link></td></tr>)}</tbody></table></div>}
         </AdminPanel>
       </>}
-      <div className="track-page-footnote"><Clock3 size={14} /> Для latency, TTFA, error rate и полной статистики потребуется отдельный аналитический endpoint или интеграция с Prometheus.</div>
+      <div className="track-page-footnote"><Clock3 size={14} /> Полная статистика задержек и ошибок появится после отдельного отчёта.</div>
     </div>
   );
 }
@@ -90,7 +90,7 @@ function DemoAnalyticsOverview() {
 
   return (
     <div className="admin-page-stack">
-      <SectionHeading eyebrow="INBOUND CALL ANALYTICS" title="Обзор входящих звонков" description={`Маршруты, качество и доступность сервисов · ${tenantName}. В live-режиме метрики должны приходить из backend/Prometheus.`} action={<div className="track-heading-actions"><StatusBadge tone={env.demoMode ? 'demo' : 'neutral'} dot>{env.demoMode ? 'Синтетические данные' : 'Tenant API'}</StatusBadge><button type="button" className="button button--secondary button--small" onClick={() => void load()} disabled={loading}><RefreshCw size={14} /> Обновить</button></div>} />
+      <SectionHeading eyebrow="Админка" title="Обзор входящих звонков" description={`Маршруты, качество и доступность сервисов · ${tenantName}.`} action={<div className="track-heading-actions"><StatusBadge tone={env.demoMode ? 'demo' : 'neutral'} dot>{env.demoMode ? 'Синтетические данные' : 'Кабинет компании'}</StatusBadge><button type="button" className="button button--secondary button--small" onClick={() => void load()} disabled={loading}><RefreshCw size={14} /> Обновить</button></div>} />
       {env.demoMode && <div className="demo-data-callout"><ShieldCheck size={17} /><span><strong>Demo fixture.</strong> Данные считаются по синтетическим звонкам активного tenant. Здесь нет реальной телеком-статистики, настоящих транскриптов или Prometheus scrape.</span></div>}
       {error && <div className="notice notice--warning" role="alert">{error}</div>}
       {loading && <div className="track-empty-state"><span className="loading-dot" />Загружаем аналитику…</div>}
@@ -103,21 +103,21 @@ function DemoAnalyticsOverview() {
         </div>
         <div className="metric-grid metric-grid--four">
           <MetricCard label="Error / degraded rate" value={percent(d.error_rate)} detail="Отмеченные ошибки и деградации" icon={<AlertTriangle size={17} />} tone="amber" />
-          <MetricCard label="TTFA · p50" value={d.ttfa_p50_ms == null ? '—' : `${d.ttfa_p50_ms} мс`} detail="После конца реплики до первого аудио" icon={<Clock3 size={17} />} />
-          <MetricCard label="TTFA · p95" value={d.ttfa_p95_ms == null ? '—' : `${d.ttfa_p95_ms} мс`} detail="Цель ≠ гарантия SLA" icon={<Clock3 size={17} />} tone="amber" />
+          <MetricCard label="До ответа · медиана" value={d.ttfa_p50_ms == null ? '—' : `${d.ttfa_p50_ms} мс`} detail="После конца реплики до первого звука" icon={<Clock3 size={17} />} />
+          <MetricCard label="До ответа · 95%" value={d.ttfa_p95_ms == null ? '—' : `${d.ttfa_p95_ms} мс`} detail="Ориентир, не гарантия" icon={<Clock3 size={17} />} tone="amber" />
           <MetricCard label="Voice responses" value={String(d.route_counts.voice)} detail="Голосовой маршрут" icon={<Headphones size={17} />} tone="green" />
         </div>
         <div className="admin-grid-two">
-          <AdminPanel title="Задержки по сервисам" eyebrow="P50 / P95 · DEMO OR API">
+          <AdminPanel title="Задержки по сервисам" eyebrow="Медиана и 95%">
             <div className="latency-bars">{d.latency_spans.map((span, index) => <div className="latency-row" key={span.name}><div className="latency-row__label"><span>{span.name}</span><small>{span.p50_ms == null ? '—' : `${span.p50_ms} / ${span.p95_ms ?? '—'} мс`}</small></div><div className="latency-row__track"><span className={`latency-row__bar latency-row__bar--${span.status ?? 'ok'}`} style={{ width: `${Math.min(100, (span.p95_ms ?? 0) / 1200 * 100)}%` }} /></div><span className="latency-row__index">0{index + 1}</span></div>)}</div>
-            <p className="admin-footnote">Параллельные этапы перекрываются. Для реальных звонков внешний LLM не вызывается до legal/security approval.</p>
+            <p className="admin-footnote">Этапы могут идти параллельно. Для реальных звонков внешняя модель не используется без отдельного согласования.</p>
           </AdminPanel>
-          <AdminPanel title="Классификация обращений" eyebrow="TOP INTENTS">
+          <AdminPanel title="Классификация обращений" eyebrow="Частые темы">
             {d.top_intents.length ? <div className="track-intent-list">{d.top_intents.map((item, index) => <div className="track-intent-row" key={item.intent}><span className="track-intent-row__number">0{index + 1}</span><span className="track-intent-row__label">{item.intent.replaceAll('_', ' ')}</span><strong>{item.count}</strong><span className="track-intent-row__bar"><i style={{ width: `${Math.max(5, item.count / Math.max(1, d.total_calls) * 100)}%` }} /></span></div>)}</div> : <div className="track-empty-state">Данные классификации пока отсутствуют.</div>}
             <p className="admin-footnote">В live-режиме эти значения рассчитывает backend, а не выборка браузера.</p>
           </AdminPanel>
         </div>
-        <AdminPanel title="Быстрые переходы" eyebrow="CONTROL PLANE"><div className="track-admin-shortcuts"><Link to="/calls"><PhoneCall size={18} /><span><strong>История звонков</strong><small>Транскрипты, routing и корректировки</small></span><ArrowUpRight size={15} /></Link><Link to="/scenarios"><GitBranch size={18} /><span><strong>Сценарии и правила</strong><small>Draft, публикация и версии маршрутизатора</small></span><ArrowUpRight size={15} /></Link><Link to="/admin/knowledge"><BarChart3 size={18} /><span><strong>Источники знаний</strong><small>Tenant-scoped provenance и freshness</small></span><ArrowUpRight size={15} /></Link></div></AdminPanel>
+        <AdminPanel title="Быстрые переходы" eyebrow="Разделы"><div className="track-admin-shortcuts"><Link to="/calls"><PhoneCall size={18} /><span><strong>История звонков</strong><small>Транскрипты, маршруты и правки</small></span><ArrowUpRight size={15} /></Link><Link to="/scenarios"><GitBranch size={18} /><span><strong>Сценарии и правила</strong><small>Черновик, публикация и версии</small></span><ArrowUpRight size={15} /></Link><Link to="/admin/knowledge"><BarChart3 size={18} /><span><strong>Источники знаний</strong><small>Материалы и актуальность</small></span><ArrowUpRight size={15} /></Link></div></AdminPanel>
         <div className="track-page-footnote"><Clock3 size={14} /> p50 ≤ 400 мс — stretch target для короткого сценария на тёплом стенде, не обещание SLA. <Link to="/calls">Посмотреть звонки <ArrowRight size={13} /></Link></div>
       </>}
     </div>

@@ -7,6 +7,7 @@ Live mode is opt-in via ``VOICE_ASR_MODE=live`` / ``VOICE_TTS_MODE=real``.
 from __future__ import annotations
 
 import os
+import threading
 from typing import Literal
 
 from speech.asr.scripted import ScriptedRecognizer
@@ -22,11 +23,17 @@ __all__ = [
     "build_cascade",
     "build_recognizer",
     "build_vad",
+    "get_live_vad",
     "get_tts_adapter_for_mode",
+    "reset_live_vad_for_tests",
     "tts_mode",
     "voice_pipeline_status",
     "warmup_live_adapters",
 ]
+
+_LIVE_VAD_CONFIG = VADConfig(sample_rate=16000, prefix_padding_ms=400)
+_live_vad_template: SileroVADAdapter | None = None
+_live_vad_lock = threading.Lock()
 
 
 def asr_mode() -> VoiceMode:
@@ -48,22 +55,35 @@ def voice_pipeline_status() -> str:
     return "mock"
 
 
+def get_live_vad() -> SileroVADAdapter:
+    """Load Silero VAD weights once; callers that stream audio must ``fork()``."""
+    global _live_vad_template
+    if _live_vad_template is None:
+        with _live_vad_lock:
+            if _live_vad_template is None:
+                try:
+                    _live_vad_template = SileroVADAdapter.from_pretrained(_LIVE_VAD_CONFIG)
+                except SpeechError:
+                    raise
+                except Exception as exc:  # noqa: BLE001 - typed failure for the WS loop
+                    raise SpeechError(
+                        ErrorCode.MODEL_UNAVAILABLE, f"live VAD unavailable: {exc}"
+                    ) from exc
+    return _live_vad_template
+
+
+def reset_live_vad_for_tests() -> None:
+    """Drop the cached live VAD so unit tests do not leak weights across cases."""
+    global _live_vad_template
+    with _live_vad_lock:
+        _live_vad_template = None
+
+
 def build_vad() -> SileroVADAdapter:
     if asr_mode() == "live":
-        try:
-            return SileroVADAdapter.from_pretrained(
-                VADConfig(sample_rate=16000, prefix_padding_ms=400)
-            )
-        except SpeechError:
-            raise
-        except Exception as exc:  # noqa: BLE001 - typed failure for the WS loop
-            raise SpeechError(
-                ErrorCode.MODEL_UNAVAILABLE, f"live VAD unavailable: {exc}"
-            ) from exc
-    return SileroVADAdapter(
-        energy_probability,
-        VADConfig(sample_rate=16000, prefix_padding_ms=400),
-    )
+        # Per-session clone: the Silero module keeps recurrent state.
+        return get_live_vad().fork()
+    return SileroVADAdapter(energy_probability, _LIVE_VAD_CONFIG)
 
 
 def build_recognizer() -> object:

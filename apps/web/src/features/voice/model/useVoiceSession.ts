@@ -17,7 +17,7 @@ export function useVoiceSession({ onTranscript }: Options) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [clockNow, setClockNow] = useState(Date.now());
-  const [channelLabel, setChannelLabel] = useState('Browser test channel / mock — не телефония');
+  const [channelLabel, setChannelLabel] = useState('Голосовой помощник в браузере');
 
   useEffect(() => {
     if (!startedAt) return;
@@ -33,7 +33,7 @@ export function useVoiceSession({ onTranscript }: Options) {
   const start = useCallback(async () => {
     setNotice(null);
     if (env.demoMode) {
-      setChannelLabel('DEMO · синтетическая сессия, без микрофона');
+      setChannelLabel('Демонстрационный разговор без микрофона');
       setState('connecting');
       if (demoTimerRef.current !== null) window.clearTimeout(demoTimerRef.current);
       demoTimerRef.current = window.setTimeout(() => {
@@ -44,7 +44,7 @@ export function useVoiceSession({ onTranscript }: Options) {
       return;
     }
     if (liveVoiceConfigured) {
-      setChannelLabel('LiveKit (не SIP). Требуется media token от backend.');
+      setChannelLabel('Голосовой помощник в браузере');
       setState('requesting_microphone');
       let createdSessionId: string | null = null;
       try {
@@ -52,7 +52,7 @@ export function useVoiceSession({ onTranscript }: Options) {
         createdSessionId = session.session_id;
         setSessionId(session.session_id);
         if (!session.token) {
-          throw new Error('LiveKit URL задан, но POST /sessions не вернул media token. Очистите VITE_LIVEKIT_URL, чтобы использовать WS mock-канал.');
+          throw new Error('Не удалось подключить голос. Попробуйте ещё раз или напишите текстом.');
         }
         setState('connecting');
         const client = new LiveKitVoiceClient({
@@ -72,12 +72,12 @@ export function useVoiceSession({ onTranscript }: Options) {
         }
         setSessionId(null);
         setState('degraded');
-        setNotice(error instanceof Error ? error.message : 'Не удалось начать LiveKit-сессию.');
+        setNotice(error instanceof Error ? error.message : 'Не удалось подключить голос. Попробуйте ещё раз или напишите текстом.');
       }
       return;
     }
 
-    setChannelLabel('Browser test channel / mock — не телефония');
+    setChannelLabel('Голосовой помощник в браузере');
     setState('requesting_microphone');
     let createdSessionId: string | null = null;
     try {
@@ -105,7 +105,7 @@ export function useVoiceSession({ onTranscript }: Options) {
       setNotice(
         error instanceof Error
           ? error.message
-          : 'Не удалось открыть WS mock-канал. Проверьте API /api/v1/ws/sessions/{id}.',
+          : 'Не удалось подключить голос. Попробуйте ещё раз или напишите текстом.',
       );
     }
   }, [tenantId]);

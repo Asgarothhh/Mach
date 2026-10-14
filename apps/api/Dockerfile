@@ -2,11 +2,11 @@ FROM python:3.12-slim
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --retries 10 --timeout 60 --no-cache-dir -r requirements.txt
 
 COPY packages/contracts/knowledge ./packages/contracts/knowledge
 COPY packages/rag ./packages/rag
-RUN pip install --no-cache-dir --no-deps ./packages/contracts/knowledge ./packages/rag
+RUN pip install --retries 10 --timeout 60 --no-cache-dir --no-deps ./packages/contracts/knowledge ./packages/rag
 
 # Копируем конфигурацию и скрипты миграций
 COPY alembic.ini .

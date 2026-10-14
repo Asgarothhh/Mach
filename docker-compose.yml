@@ -90,7 +90,10 @@ services:
     volumes:
       - pg_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      # Host :5432 is often a local Postgres without the demo admin role.
+      # Publish the compose database on 5433 so host uvicorn can reach it
+      # without docker compose down -v and without touching the local cluster.
+      - "5433:5432"
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]

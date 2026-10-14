@@ -1,11 +1,35 @@
 import asyncio
 import json
+import os
 import re
 from collections.abc import AsyncGenerator
 
 import httpx
 
 from app.orchestrator.state_machine import TurnContext
+from app.security.telemetry import get_logger
+
+logger = get_logger("openrouter")
+
+GEMMA_MODEL_ID = "google/gemma-4-26b-a4b-it"
+STREAM_TIMEOUT_S = 30.0
+
+
+def build_provider_options(model_id: str) -> dict:
+    """Build OpenRouter provider routing.
+
+    Gemma has no ZDR endpoints: forcing zdr=true yields 404 «No endpoints found».
+    Attach zdr only when OPENROUTER_REQUIRE_ZDR is true *and* the model is not Gemma.
+    """
+    provider: dict = {"data_collection": "deny"}
+    require_zdr = os.getenv("OPENROUTER_REQUIRE_ZDR", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    if require_zdr and model_id != GEMMA_MODEL_ID:
+        provider["zdr"] = True
+    return provider
 
 
 class OpenRouterAdapter:
@@ -70,21 +94,24 @@ class OpenRouterAdapter:
             "model": model_id,
             "messages": messages,
             "stream": True,
-            "provider": {
-                "data_collection": "deny",
-                "zdr": True
-            },
+            "provider": build_provider_options(model_id),
             "temperature": 0.2,
             "max_tokens": 250
         }
 
         async with httpx.AsyncClient() as client:
             try:
-                async with client.stream("POST", self.base_url, headers=headers, json=payload, timeout=5.0) as response:
+                async with client.stream(
+                    "POST",
+                    self.base_url,
+                    headers=headers,
+                    json=payload,
+                    timeout=STREAM_TIMEOUT_S,
+                ) as response:
                     response.raise_for_status()
                     async for line in response.aiter_lines():
                         if turn_context.is_cancelled:
-                            break  # Прерывание при barge-in[cite: 16, 17]
+                            break
 
                         if line.startswith("data: ") and line != "data: [DONE]":
                             data = json.loads(line[6:])
@@ -92,6 +119,17 @@ class OpenRouterAdapter:
                                 delta = data["choices"][0].get("delta", {}).get("content", "")
                                 if delta:
                                     yield delta
-            except httpx.HTTPError as e:
-                # Нормализация ошибок, скрытие stack trace и ключей[cite: 16, 17]
-                raise RuntimeError(f"OpenRouter API error: {e.__class__.__name__}")
+            except httpx.HTTPStatusError as exc:
+                logger.error(
+                    "openrouter_http_error",
+                    error_class=exc.__class__.__name__,
+                    status_code=exc.response.status_code,
+                )
+                raise RuntimeError(
+                    f"OpenRouter API error: {exc.__class__.__name__}"
+                ) from None
+            except httpx.HTTPError as exc:
+                logger.error("openrouter_http_error", error_class=exc.__class__.__name__)
+                raise RuntimeError(
+                    f"OpenRouter API error: {exc.__class__.__name__}"
+                ) from None

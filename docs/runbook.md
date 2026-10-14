@@ -93,22 +93,62 @@ Smoke API: `python scripts/smoke_test.py` (нужен поднятый API).
 
 ## 5. Модели (opt-in, не при compose up)
 
+Compose demo profile остаётся **mock**. Live ASR/TTS — только host-процессы в conda env `mach` + extras. Веса **не** скачиваются при `compose up`. RAG — in-memory fixtures (`acme-it-demo` / `mts-public-demo`), не BGE-M3 и не Qdrant. LiveKit/SIP не настроены. T-one и Silero VAD качаются при **первой live-загрузке**, не при старте compose.
+
 ```bash
-python scripts/fetch_models.py   # явная команда, веса в models/ (gitignored)
-# затем extras: pip install -e ".[vad,asr,tts,tts-stress]"
-# VOICE_ASR_MODE=live VOICE_TTS_MODE=real
+# CPU torch first so extras do not pull CUDA
+conda run -n mach pip install torch --index-url https://download.pytorch.org/whl/cpu
+conda run -n mach pip install -e ".[vad,asr,tts,tts-stress]"
+conda run -n mach pip install soxr soundfile
+conda run -n mach python scripts/fetch_models.py silero-tts-v5_cis_base_nostress --output-dir models/tts
+conda run -n mach python scripts/fetch_asr_testset.py --synthetic-only --out artifacts/asr_benchmark
 ```
 
 Default live TTS — MIT shortlist Silero `v5_cis_base_nostress` / `ru_bogdan`. Голоса Silero `v5_5_ru` (CC BY-NC-SA) **не** default demo.
 
-## 6. BLOCKED на этом стенде
+## 6. Live каскад на хосте (conda `mach`)
 
-* Live ASR/TTS без локальных весов (используйте mock).
+Compose `api`/`voice_agent` занимают `:8000`/`:8100` — остановите их (`docker compose --profile demo stop api voice_agent`), **не** `down -v`. Postgres (и redis) оставьте.
+
+Миграции с хоста (override, чтобы `load_dotenv` не подставил hostname `postgres`):
+
+```bash
+SYNC_DATABASE_URL=postgresql+psycopg2://admin:123789@127.0.0.1:5433/voice_agent \
+  conda run -n mach alembic upgrade head
+```
+
+Затем два процесса с live overlay (не меняйте compose defaults; `DATABASE_URL` в `.env` для compose остаётся `@postgres`):
+
+```bash
+LIVE_ENV="VOICE_ASR_MODE=live VOICE_TTS_MODE=real ASR_MODEL=t-tech/t-one ASR_DEVICE=cpu \
+TTS_MODEL_PATH=models/tts/v5_cis_base_nostress.pt TTS_VOICE=ru_bogdan TTS_SAMPLE_RATE=24000 \
+DATABASE_URL=postgresql+asyncpg://admin:123789@127.0.0.1:5433/voice_agent \
+SYNC_DATABASE_URL=postgresql+psycopg2://admin:123789@127.0.0.1:5433/voice_agent"
+
+conda run -n mach env $LIVE_ENV uvicorn app.api.main:app --host 127.0.0.1 --port 8000
+conda run -n mach env $LIVE_ENV VOICE_AGENT_HOST=127.0.0.1 VOICE_AGENT_PORT=8100 python -m app.voice_agent.worker
+```
+
+Проверки: `:8000/health/ready` → `voice=live`, retriever/postgres `ok`; `:8100/health/ready` → `asr=ok`, `tts=ok` (не mock), `livekit=not_configured`.
+
+PCM smoke (wav не должны совпадать с `VOICE_MOCK_ASR_TEXT`):
+
+```bash
+DATABASE_URL=postgresql+asyncpg://admin:123789@127.0.0.1:5433/voice_agent \
+  conda run -n mach python scripts/stage1_e2e_smoke.py --api http://127.0.0.1:8000
+```
+
+Frontend (Vite): `VITE_DEMO_MODE=false VITE_BACKEND_TEXT_TEST=true VITE_API_BASE_URL=http://localhost:8000/api/v1 VITE_LIVEKIT_URL= npm run dev`. Баннер «Browser test channel / mock — не телефония» означает отсутствие SIP, не mock ASR.
+
+## 7. BLOCKED на этом стенде
+
 * LiveKit и media token в `POST /sessions` (SSOT §9 / §15).
 * SIP / МТС-транк — нет credentials.
-* Crawler, Qdrant hybrid, embeddings, reranker.
+* Crawler, Qdrant hybrid, embeddings, reranker (BGE-M3).
 * `/admin/knowledge/*`, `/tenants`, `/calls`, scenarios, analytics — UI в demo/disabled.
+* Chatterbox / Kokoro / Piper / Whisper как default cascade.
+* Synthetic-demo LLM: `google/gemma-4-26b-a4b-it` via OpenRouter (allowlist always includes Gemma). `OPENROUTER_REQUIRE_ZDR` does not attach `zdr` for Gemma (no ZDR route). EXTERNAL_LLM_ALLOWED for real telephony remains false.
 
-## 7. Следующий шаг
+## 8. Следующий шаг
 
 Self-hosted LiveKit в Compose, короткий media token, voice-agent как LiveKit worker. Не имитировать «телефонный продукт» до SIP credentials.

@@ -23,7 +23,12 @@ from slowapi.util import get_remote_address
 from app.api.admin import router as admin_router
 from app.api.deps import AsyncSessionLocal
 from app.models.store import SqlAlchemyTurnStore, TurnStore
-from app.orchestrator.dialog_flow import DialogOrchestrator, UnknownSessionError
+from app.orchestrator.dialog_flow import (
+    DEFAULT_LLM_MODEL_ID,
+    DialogOrchestrator,
+    UnknownSessionError,
+    resolve_llm_model_id,
+)
 from app.orchestrator.openrouter_client import OpenRouterAdapter
 from app.orchestrator.state_machine import SessionBinding, SessionManager, SessionState
 from app.rag.retriever import KnowledgeRuntime, build_demo_runtime
@@ -53,9 +58,14 @@ guardrails = GuardrailsService()
 runtime: KnowledgeRuntime = build_demo_runtime()
 store: TurnStore = SqlAlchemyTurnStore(AsyncSessionLocal)
 
+_requested_llm = resolve_llm_model_id()
+_allowed_models = [DEFAULT_LLM_MODEL_ID]
+if _requested_llm not in _allowed_models:
+    _allowed_models.append(_requested_llm)
+
 llm_adapter = OpenRouterAdapter(
     api_key=os.getenv("OPENROUTER_API_KEY", ""),
-    allowed_models=["meta-llama/llama-3-8b-instruct"]
+    allowed_models=_allowed_models,
 )
 
 dialog_orchestrator = DialogOrchestrator(
@@ -266,6 +276,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 
     generation_task: asyncio.Task | None = None
     speech = None
+    speech_error_sent = False
 
     async def stop_generation() -> None:
         nonlocal generation_task
@@ -327,15 +338,50 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             send_tts_stream(websocket, session_id, event.text)
         )
 
+    async def _notify_speech_error(code: str) -> None:
+        nonlocal speech_error_sent, speech
+        if speech_error_sent:
+            return
+        speech_error_sent = True
+        session_manager.transition(session_id, SessionState.DEGRADED)
+        cascade = speech
+        speech = None
+        if cascade is not None:
+            try:
+                await cascade.close()
+            except Exception as close_exc:  # noqa: BLE001 - socket stays up
+                logger.error(
+                    "speech_cascade_close_failed",
+                    session_id=session_id,
+                    error_class=close_exc.__class__.__name__,
+                )
+        await _safe_send_json(
+            websocket,
+            {
+                "type": "SpeechError",
+                "payload": {"code": code, "session_id": session_id},
+            },
+        )
+
     try:
-        speech = build_cascade(session_id, on_vad=on_vad, on_asr=on_asr)
+        # Adapter load (Silero VAD / T-one) is blocking; keep the event loop free.
+        speech = await asyncio.to_thread(
+            build_cascade, session_id, on_vad=on_vad, on_asr=on_asr
+        )
+    except SpeechPipelineError as exc:
+        logger.error(
+            "speech_pipeline_unavailable",
+            session_id=session_id,
+            error_class=exc.__class__.__name__,
+        )
+        await _notify_speech_error(exc.code.value)
     except Exception as exc:  # noqa: BLE001 - keep JSON WS path even if PCM cascade fails
         logger.error(
             "speech_pipeline_unavailable",
             session_id=session_id,
             error_class=exc.__class__.__name__,
         )
-        session_manager.transition(session_id, SessionState.DEGRADED)
+        await _notify_speech_error("model_unavailable")
 
     try:
         while True:
@@ -353,6 +399,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                             session_id=session_id,
                             error_class=exc.__class__.__name__,
                         )
+                        await _notify_speech_error(exc.code.value)
                 continue
 
             raw_data = message.get("text")

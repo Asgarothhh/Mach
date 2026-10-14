@@ -17,7 +17,7 @@ export function ConfigurationPage() {
   return (
     <div className="admin-page-stack">
       <SectionHeading
-        eyebrow="TENANT CONFIGURATION & ROUTING"
+        eyebrow="Настройки"
         title="Конфигурация и безопасность"
         description={`Версии сценариев, voice/chat/human routing, политики согласия и privacy для ${tenantName}.`}
         action={<StatusBadge tone="warning">Read-only demo</StatusBadge>}
@@ -29,14 +29,14 @@ export function ConfigurationPage() {
           <p>Tenant ID: <code>{tenantId}</code>. Изменение рабочих настроек требует серверной роли, versioning и audit event. OpenRouter API key здесь не показывается и не должен попадать в браузер.</p>
         </div>
       </div>
-      <AdminPanel title="Политика обработки реальных звонков" eyebrow="PRODUCTION SAFETY GATE">
-        <div className="track-info-panel track-info-panel--privacy"><ShieldCheck size={19} /><div><strong>EXTERNAL_LLM_ALLOWED = false по умолчанию</strong><p>Для реальных звонков OpenRouter запрещён, пока владелец данных, Legal и ИБ письменно не одобрили модель, provider route, retention и категории передаваемых данных. Этот переключатель относится только к синтетическому демо и не сохраняет настройку на backend.</p></div></div>
+      <AdminPanel title="Политика обработки реальных звонков" eyebrow="Безопасность">
+        <div className="track-info-panel track-info-panel--privacy"><ShieldCheck size={19} /><div><strong>Внешняя модель для реальных звонков выключена</strong><p>Для телефонных звонков внешняя модель не используется без отдельного согласования. Этот переключатель относится только к демонстрации и не сохраняет настройку на сервере.</p></div></div>
         <label className="toggle-row"><span><strong>Разрешить внешний LLM для synthetic demo</strong><small>Не включает вызовы для реального телефонного трафика</small></span><input type="checkbox" checked={externalLlmAllowed} onChange={(event) => { if (env.demoMode) setExternalLlmAllowed(event.target.checked); }} disabled={!env.demoMode} /></label>
         <div className="policy-detail"><strong>Обязательные ограничения</strong><div><span>tenant_id</span><code>{tenantId}</code></div><div><span>External LLM for real calls</span><code>false until approval</code></div><div><span>Raw audio storage</span><code>false</code></div><div><span>Provider fallback</span><code>fail closed</code></div></div>
       </AdminPanel>
 
       <div className="admin-grid-two">
-        <AdminPanel title="Модель для synthetic demo" eyebrow="OPENROUTER ALLOWLIST">
+        <AdminPanel title="Модель для демонстрации" eyebrow="Разрешённые модели">
           <div className="form-stack">
             <label>
               <span>Основная модель (model ID)</span>
@@ -65,7 +65,7 @@ export function ConfigurationPage() {
           </div>
         </AdminPanel>
 
-        <AdminPanel title="Guardrails policy" eyebrow="INPUT / OUTPUT VALIDATION">
+        <AdminPanel title="Правила проверки" eyebrow="Вход и выход">
           <label className="toggle-row">
             <span><strong>Входная проверка</strong><small>PII detection, prompt injection, scope</small></span>
             <input type="checkbox" checked={guardrails} onChange={(event) => setGuardrails(event.target.checked)} />
@@ -87,7 +87,7 @@ export function ConfigurationPage() {
         </AdminPanel>
       </div>
 
-      <AdminPanel title="Таймауты и лимиты" eyebrow="RUNTIME POLICY">
+      <AdminPanel title="Таймауты и лимиты" eyebrow="Ограничения">
         <div className="form-grid-two">
           <label><span>LLM connect timeout</span><input defaultValue="800 мс" /></label>
           <label><span>Max answer tokens</span><input defaultValue="300" /></label>
@@ -96,7 +96,7 @@ export function ConfigurationPage() {
         </div>
       </AdminPanel>
 
-      <AdminPanel title="Версия конфигурации" eyebrow="CHANGE CONTROL">
+      <AdminPanel title="Версия конфигурации" eyebrow="Версии">
         <div className="config-version-row">
           <div>
             <strong>assistant-config-v1</strong>

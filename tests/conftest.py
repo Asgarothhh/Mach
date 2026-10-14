@@ -16,20 +16,26 @@ ACME_SUFFICIENT_QUERY = "график работы офис acme"
 MTS_SUFFICIENT_QUERY = "входящие звонки турции"
 NO_EVIDENCE_QUERY = "рецепт борща бабушки"
 ACME_ASKING_MTS_QUERY = "входящие звонки турции полтора"
-LLM_MODEL = "meta-llama/llama-3-8b-instruct"
+LLM_MODEL = "google/gemma-4-26b-a4b-it"
 
 
 @pytest.fixture(autouse=True)
 def _force_mock_and_limiter(monkeypatch):
     from app.api import main
+    from app.voice_agent.factory import reset_live_vad_for_tests
+    from app.voice_agent.worker import reset_checks_for_tests
 
     # Mock speech path (PCM tone TTS, energy VAD, scripted ASR). Live weights
     # stay behind VOICE_ASR_MODE=live / VOICE_TTS_MODE=real.
     monkeypatch.setenv("VOICE_TTS_MODE", "mock")
     monkeypatch.setenv("VOICE_ASR_MODE", "mock")
+    reset_live_vad_for_tests()
+    reset_checks_for_tests()
     main.llm_adapter.is_mock = True
     main.limiter.reset()
     yield
+    reset_live_vad_for_tests()
+    reset_checks_for_tests()
     main.limiter.reset()
 
 

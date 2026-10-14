@@ -86,7 +86,7 @@ export class VoiceWsClient {
       this.socket = socket;
       socket.binaryType = 'arraybuffer';
       socket.onopen = () => resolve();
-      socket.onerror = () => reject(new Error('Не удалось открыть WS mock-канал.'));
+      socket.onerror = () => reject(new Error('Не удалось подключить голос. Попробуйте ещё раз или напишите текстом.'));
       socket.onmessage = (event) => {
         if (typeof event.data !== 'string') return;
         try {

@@ -121,15 +121,15 @@ export function OnboardingPage() {
   return (
     <div className="track-page track-page--narrow">
       <SectionHeading
-        eyebrow="ONBOARDING · TENANT SETUP"
+        eyebrow="Подключение"
         title="Подключим голосового агента"
         description="Создайте базовый профиль компании и проверьте входящий тестовый звонок. Цель — пройти мастер за пять минут."
-        action={<StatusBadge tone={env.demoMode ? 'demo' : 'neutral'} dot>{env.demoMode ? 'Демо-режим' : 'Backend API'}</StatusBadge>}
+        action={<StatusBadge tone={env.demoMode ? 'demo' : 'neutral'} dot>{env.demoMode ? 'Демо-режим' : 'Кабинет компании'}</StatusBadge>}
       />
 
       <div className="track-onboarding-summary">
         <div className="track-onboarding-summary__icon"><Clock3 size={19} /></div>
-        <div><strong>Время настройки: {elapsedLabel}</strong><p>Измерение в интерфейсе — ориентир. Окончательное событие ≤ 5 минут должен фиксировать backend.</p></div>
+        <div><strong>Время настройки: {elapsedLabel}</strong><p>Измерение в интерфейсе — ориентир. Сервис должен уложиться примерно в пять минут.</p></div>
         <span className={`track-time-target ${elapsedSeconds <= 300 ? 'is-ok' : 'is-warning'}`}>{elapsedSeconds <= 300 ? 'Цель ≤ 5 мин' : 'Больше 5 мин'}</span>
       </div>
 
@@ -143,16 +143,16 @@ export function OnboardingPage() {
         </div>
 
         {!testCallId ? <>
-          <div className="track-wizard-heading"><span className="track-step-kicker">ШАГ {step + 1} / 4</span><h2>{title}</h2><p>{['Укажите, для какой компании будет отвечать агент.', 'Задайте приветствие и правила выбора канала ответа.', 'Выберите test/SIP адаптер и резервные каналы.', 'Проверьте уведомление о разговоре и запустите тестовый входящий вызов.'][step]}</p></div>
+          <div className="track-wizard-heading"><span className="track-step-kicker">ШАГ {step + 1} / 4</span><h2>{title}</h2><p>{['Укажите, для какой компании будет отвечать помощник.', 'Задайте приветствие и правила выбора канала ответа.', 'Выберите входящий канал и резервные способы связи.', 'Проверьте уведомление о разговоре и запустите тестовый входящий вызов.'][step]}</p></div>
 
           {step === 0 && <div className="track-form-stack">
             <fieldset className="track-fieldset"><legend>Профиль компании</legend>
-              <label className={`track-choice ${profileMode === 'create' ? 'is-selected' : ''}`}><input type="radio" name="tenant-mode" checked={profileMode === 'create'} onChange={() => { setProfileMode('create'); setCreatedTenant(null); setForm(initialForm); }} /><span><strong>Создать новый профиль</strong><small>Настроить новый изолированный tenant.</small></span></label>
+              <label className={`track-choice ${profileMode === 'create' ? 'is-selected' : ''}`}><input type="radio" name="tenant-mode" checked={profileMode === 'create'} onChange={() => { setProfileMode('create'); setCreatedTenant(null); setForm(initialForm); }} /><span><strong>Создать новый профиль</strong><small>Настроить отдельный профиль компании.</small></span></label>
               <label className={`track-choice ${profileMode === 'existing' ? 'is-selected' : ''}`}><input type="radio" name="tenant-mode" checked={profileMode === 'existing'} onChange={() => { setProfileMode('existing'); const profile = profiles.find((item) => item.tenant_id === selectedProfileId); if (profile) chooseExistingProfile(profile.tenant_id); }} /><span><strong>Выбрать существующий</strong><small>Использовать профиль, доступный вашей учётной записи.</small></span></label>
             </fieldset>
             {profileMode === 'existing' && <label className="track-field"><span>Доступные профили</span><select value={selectedProfileId} onChange={(event) => chooseExistingProfile(event.target.value)} disabled={profilesLoading || profiles.length === 0}><option value="">{profilesLoading ? 'Загружаем профили…' : 'Нет доступных профилей'}</option>{profiles.map((profile) => <option value={profile.tenant_id} key={profile.tenant_id}>{profile.display_name}</option>)}</select><small>Production-список должен приходить от backend только с tenant, на которые у пользователя есть права.</small></label>}
             {profileMode === 'create' && <label className="track-field"><span>Название компании <b>*</b></span><input autoFocus value={form.display_name} onChange={(event) => update('display_name', event.target.value)} placeholder="Например, ООО «Моя компания»" maxLength={120} /><small>Это имя будет использоваться в профиле и приветствии. Не указывайте реальные данные звонящих.</small></label>}
-            <div className="track-info-panel"><Building2 size={20} /><div><strong>Изолированный профиль компании</strong><p>Источники, звонки, сценарии и настройки должны храниться в рамках одного tenant. Публичные материалы МТС не будут автоматически использоваться для вашей компании.</p></div></div>
+            <div className="track-info-panel"><Building2 size={20} /><div><strong>Изолированный профиль компании</strong><p>Источники, звонки, сценарии и настройки хранятся в рамках одной компании. Публичные материалы МТС не подключаются автоматически.</p></div></div>
           </div>}
 
           {step === 1 && <div className="track-form-stack">
@@ -167,22 +167,22 @@ export function OnboardingPage() {
 
           {step === 2 && <div className="track-form-stack">
             <fieldset className="track-fieldset"><legend>Входящий канал</legend>
-              <label className={`track-choice ${form.inbound_adapter === 'mock' ? 'is-selected' : ''}`}><input type="radio" name="inbound-adapter" checked={form.inbound_adapter === 'mock'} onChange={() => update('inbound_adapter', 'mock' as InboundAdapter)} /><span><strong>Mock / Test Call</strong><small>Рабочий путь для демо: симулирует входящий вызов, не подключая телефонную сеть.</small></span><StatusBadge tone="demo">Доступно</StatusBadge></label>
-              <label className={`track-choice ${form.inbound_adapter === 'sip' ? 'is-selected' : ''}`}><input type="radio" name="inbound-adapter" checked={form.inbound_adapter === 'sip'} onChange={() => update('inbound_adapter', 'sip' as InboundAdapter)} /><span><strong>SIP / VoIP test endpoint</strong><small>Выбирайте только если backend уже настроен на тестовый trunk/adapter.</small></span></label>
+              <label className={`track-choice ${form.inbound_adapter === 'mock' ? 'is-selected' : ''}`}><input type="radio" name="inbound-adapter" checked={form.inbound_adapter === 'mock'} onChange={() => update('inbound_adapter', 'mock' as InboundAdapter)} /><span><strong>Тестовый вызов</strong><small>Проверка сценария в кабинете, без телефонной сети.</small></span><StatusBadge tone="demo">Доступно</StatusBadge></label>
+              <label className={`track-choice ${form.inbound_adapter === 'sip' ? 'is-selected' : ''}`}><input type="radio" name="inbound-adapter" checked={form.inbound_adapter === 'sip'} onChange={() => update('inbound_adapter', 'sip' as InboundAdapter)} /><span><strong>Телефонный канал</strong><small>Доступен только после отдельного подключения входящей линии.</small></span></label>
             </fieldset>
-            <label className="track-field"><span>Label входящего endpoint</span><input value={form.inbound_endpoint_label} onChange={(event) => update('inbound_endpoint_label', event.target.value)} placeholder={form.inbound_adapter === 'mock' ? 'Mock incoming call' : 'SIP test route / reference'} /></label>
+            <label className="track-field"><span>Название входящего канала</span><input value={form.inbound_endpoint_label} onChange={(event) => update('inbound_endpoint_label', event.target.value)} placeholder={form.inbound_adapter === 'mock' ? 'Тестовый входящий вызов' : 'Входящая линия'} /></label>
             <div className="track-field-row">
-              <label className="track-field"><span>Канал чата</span><select value={form.chat_provider} onChange={(event) => update('chat_provider', event.target.value as 'none' | 'mock')}><option value="mock">Демо-чат (mock)</option><option value="none">Пока не настроен</option></select></label>
+              <label className="track-field"><span>Канал чата</span><select value={form.chat_provider} onChange={(event) => update('chat_provider', event.target.value as 'none' | 'mock')}><option value="mock">Текстовый чат</option><option value="none">Пока не настроен</option></select></label>
               <label className="track-field"><span>Название чата</span><input value={form.chat_destination_label} onChange={(event) => update('chat_destination_label', event.target.value)} disabled={form.chat_provider === 'none'} /></label>
             </div>
-            <label className="track-field"><span>Human handoff destination</span><input value={form.human_transfer_label} onChange={(event) => update('human_transfer_label', event.target.value)} disabled={!form.human_transfer_enabled} /></label>
+            <label className="track-field"><span>Куда передавать сотруднику</span><input value={form.human_transfer_label} onChange={(event) => update('human_transfer_label', event.target.value)} disabled={!form.human_transfer_enabled} /></label>
             <label className="track-check"><input type="checkbox" checked={form.human_transfer_enabled} onChange={(event) => update('human_transfer_enabled', event.target.checked)} /><span><strong>Предусмотреть передачу человеку</strong><small>Наличие интерфейса не означает, что реальная очередь уже подключена.</small></span></label>
           </div>}
 
           {step === 3 && <div className="track-form-stack">
-            <label className="track-field"><span>Уведомление о разговоре <b>*</b></span><textarea value={form.consent_notice} onChange={(event) => update('consent_notice', event.target.value)} rows={4} maxLength={900} /><small>Точный текст и поведение при отказе должны быть одобрены владельцем данных / legal / ИБ.</small></label>
+            <label className="track-field"><span>Уведомление о разговоре <b>*</b></span><textarea value={form.consent_notice} onChange={(event) => update('consent_notice', event.target.value)} rows={4} maxLength={900} /><small>Текст уведомления и действие при отказе согласует владелец компании.</small></label>
             <label className="track-field"><span>Версия уведомления</span><input value={form.consent_notice_version} onChange={(event) => update('consent_notice_version', event.target.value)} maxLength={64} /></label>
-            <div className="track-info-panel track-info-panel--privacy"><ShieldCheck size={20} /><div><strong>Конфиденциальность по умолчанию</strong><p>Сырой звук не сохраняется по умолчанию. Внешний LLM запрещён для реальных звонков до отдельного согласования legal/security. Для этого мастера допустим только синтетический test call.</p></div></div>
+            <div className="track-info-panel track-info-panel--privacy"><ShieldCheck size={20} /><div><strong>Конфиденциальность по умолчанию</strong><p>Сырой звук не сохраняется по умолчанию. Не сообщайте паспортные данные и номера карт. Этот мастер проверяет сценарий, а не телефонную сеть.</p></div></div>
           </div>}
 
           {error && <div className="track-form-error" role="alert">{error}</div>}
@@ -195,20 +195,20 @@ export function OnboardingPage() {
           </div>
         </> : <div className="track-onboarding-success">
           <div className="track-success-icon"><CheckCircle2 size={32} /></div>
-          <span className="track-step-kicker">ONBOARDING CHECK</span>
+          <span className="track-step-kicker">Готово</span>
           <h2>Профиль настроен</h2>
-          <p>Для «{form.display_name}» создан тестовый вызов. Это ещё не доказывает подключение к реальному SIP trunk или операторской сети.</p>
+          <p>Для «{form.display_name}» создан тестовый вызов. Это проверка сценария, а не подключение телефонной сети.</p>
           <div className="track-result-list">
             <div><CheckCircle2 size={17} /><span>Профиль компании</span><strong>Создан</strong></div>
             <div><CheckCircle2 size={17} /><span>Уведомление о разговоре</span><strong>{form.consent_notice_version}</strong></div>
-            <div><CheckCircle2 size={17} /><span>Входящий test call</span><strong>{testCallId}</strong></div>
+            <div><CheckCircle2 size={17} /><span>Тестовый вызов</span><strong>{testCallId}</strong></div>
             <div><Clock3 size={17} /><span>Время настройки на клиенте</span><strong>{elapsedLabel}</strong></div>
           </div>
           <div className="track-info-panel"><Sparkles size={19} /><div><strong>Следующий шаг</strong><p>Проверьте историю звонков, маршрут и транскрипт. Далее подключаются реальные адаптеры и одобренные источники конкретного tenant.</p></div></div>
           <div className="track-wizard-actions track-wizard-actions--center"><button className="button button--secondary" onClick={() => navigate(`/calls/${testCallId}`)}>Открыть тестовый звонок</button><button className="button button--primary" onClick={() => navigate('/calls')}>Перейти к истории звонков <ArrowRight size={16} /></button></div>
         </div>}
       </div>
-      <p className="track-page-footnote">{env.demoMode ? 'Демо: создаются синтетические profile/call records. Тест не обращается к телефонной сети и не связывается с реальным клиентом.' : 'Production-конфигурация и авторизация проверяются backend. Отсутствующие SIP/messenger credentials должны отображаться как явная блокировка.'}</p>
+      <p className="track-page-footnote">{env.demoMode ? 'Демо: создаются синтетические записи профиля и звонка. Тест не обращается к телефонной сети и не связывается с реальным клиентом.' : 'Доступ и настройки проверяет сервис. Если телефонный канал ещё не подключён, это будет видно отдельно.'}</p>
     </div>
   );
 }

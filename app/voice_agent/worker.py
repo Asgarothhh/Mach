@@ -2,12 +2,17 @@
 
 The speech cascade still runs inside the API process. This worker reports
 readiness of the intended voice adapters and does not pretend LiveKit is up.
+
+HTTP binds before model warmup so ``/health/live`` answers immediately.
+Successful adapter probes are cached; failed live probes retry on later
+``/health/ready`` calls.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from app.voice_agent.factory import warmup_live_adapters
@@ -21,6 +26,8 @@ _checks: dict[str, str] = {
     "livekit": "not_configured",
     "llm_policy": "mock",
 }
+_adapters_ready = False
+_refresh_lock = threading.Lock()
 
 
 def _llm_policy() -> str:
@@ -30,12 +37,32 @@ def _llm_policy() -> str:
     return "mock"
 
 
+def reset_checks_for_tests() -> None:
+    """Clear cached health so unit tests do not leak mock/live results."""
+    global _adapters_ready
+    with _refresh_lock:
+        _adapters_ready = False
+        _checks.update(
+            {
+                "asr": "unavailable",
+                "tts": "unavailable",
+                "livekit": "not_configured",
+                "llm_policy": "mock",
+            }
+        )
+
+
 def refresh_checks() -> dict[str, str]:
-    adapters = warmup_live_adapters()
-    _checks.update(adapters)
-    _checks["livekit"] = "not_configured"
-    _checks["llm_policy"] = _llm_policy()
-    return dict(_checks)
+    global _adapters_ready
+    with _refresh_lock:
+        if not _adapters_ready:
+            adapters = warmup_live_adapters()
+            _checks.update(adapters)
+            if ready_ok(_checks):
+                _adapters_ready = True
+        _checks["livekit"] = "not_configured"
+        _checks["llm_policy"] = _llm_policy()
+        return dict(_checks)
 
 
 def ready_ok(checks: dict[str, str]) -> bool:
@@ -71,9 +98,11 @@ class _Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
-    refresh_checks()
     server = ThreadingHTTPServer((HOST, PORT), _Handler)
-    print(f"Voice agent health listening on {HOST}:{PORT}")
+    threading.Thread(
+        target=refresh_checks, name="voice-adapter-warmup", daemon=True
+    ).start()
+    print(f"Voice agent health listening on {HOST}:{PORT}", flush=True)
     server.serve_forever()
 
 

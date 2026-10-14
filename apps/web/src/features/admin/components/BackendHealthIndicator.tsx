@@ -24,7 +24,7 @@ export function BackendHealthIndicator() {
   return (
     <span className="backend-health-indicator" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }} title={`Liveness: ${health?.live ? 'OK' : health ? 'ERROR' : '…'} · Readiness: ${health?.ready ? 'OK' : health ? 'ERROR' : '…'}`}>
       <StatusBadge tone={tone} dot><Activity size={12} /> {label}</StatusBadge>
-      <button type="button" className="button button--secondary button--small" onClick={() => void refresh()} disabled={loading} aria-label="Проверить состояние backend"><RefreshCw size={12} /></button>
+      <button type="button" className="button button--secondary button--small" onClick={() => void refresh()} disabled={loading} aria-label="Проверить состояние сервиса"><RefreshCw size={12} /></button>
     </span>
   );
 }

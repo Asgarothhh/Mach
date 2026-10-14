@@ -1,5 +1,7 @@
 import asyncio
 import json
+import os
+import re
 import time
 import uuid
 from collections.abc import AsyncGenerator
@@ -44,7 +46,68 @@ logger = get_logger("dialog_flow")
 
 DEADLINE_MS = 200
 RETRIEVE_TIMEOUT_S = 0.25
-LLM_MODEL_ID = "meta-llama/llama-3-8b-instruct"
+DEFAULT_LLM_MODEL_ID = "google/gemma-4-26b-a4b-it"
+
+
+def resolve_llm_model_id() -> str:
+    requested = (os.getenv("OPENROUTER_MODEL_ID") or "").strip() or DEFAULT_LLM_MODEL_ID
+    if requested != DEFAULT_LLM_MODEL_ID:
+        return DEFAULT_LLM_MODEL_ID
+    return requested
+
+
+LLM_MODEL_ID = resolve_llm_model_id()
+
+
+_STATUS_ALIASES = {
+    "verified": "grounded",
+    "ok": "grounded",
+    "success": "grounded",
+    "supported": "grounded",
+    "factual": "grounded",
+    "cited": "grounded",
+    "clarification": "needs_clarification",
+    "clarify": "needs_clarification",
+    "unknown": "no_evidence",
+    "none": "no_evidence",
+    "abstain": "no_evidence",
+    "abstention": "no_evidence",
+}
+
+
+def normalize_llm_payload(parsed: dict) -> dict:
+    status = str(parsed.get("answer_status") or "").strip().lower()
+    if status in _STATUS_ALIASES:
+        parsed["answer_status"] = _STATUS_ALIASES[status]
+    elif status:
+        parsed["answer_status"] = status
+    citations = parsed.get("citation_ids")
+    if isinstance(citations, str):
+        parsed["citation_ids"] = [citations] if citations else []
+    return parsed
+
+
+def parse_llm_json(raw: str) -> dict | None:
+    """Parse model JSON, including optional markdown fences around the object."""
+    text = (raw or "").strip()
+    if not text:
+        return None
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text, count=1, flags=re.IGNORECASE)
+        text = re.sub(r"\s*```$", "", text)
+    try:
+        parsed = json.loads(text)
+        return parsed if isinstance(parsed, dict) else None
+    except json.JSONDecodeError:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start >= 0 and end > start:
+            try:
+                parsed = json.loads(text[start : end + 1])
+                return parsed if isinstance(parsed, dict) else None
+            except json.JSONDecodeError:
+                return None
+        return None
 
 
 class UnknownSessionError(LookupError):
@@ -316,8 +379,12 @@ class DialogOrchestrator:
                 f"<SESSION_CONTEXT>turn_count={len(self.session_manager.active_turns)}</SESSION_CONTEXT>\n"
                 f"<EVIDENCE>\n{evidence_text}\n</EVIDENCE>\n"
                 "<OUTPUT_CONTRACT>Краткий устный ответ. Факты компании только из evidence. "
-                "Выдай ответ строго в JSON формате. Порядок ключей строго: 1. answer_text, "
-                "2. citation_ids, 3. answer_status.</OUTPUT_CONTRACT>"
+                "Выдай ответ строго одним JSON-объектом без markdown и без текста вокруг. "
+                "Ключи: answer_text, citation_ids, answer_status. "
+                "answer_status строго одно из: grounded, needs_clarification, no_evidence, handoff. "
+                "Если факты из evidence — answer_status=grounded и citation_ids из квадратных скобок evidence. "
+                "Пример: {\"answer_text\":\"...\",\"citation_ids\":[\"acme-hours-1\"],\"answer_status\":\"grounded\"}."
+                "</OUTPUT_CONTRACT>"
             )
             messages = [{"role": "system", "content": system_prompt}]
             self.session_manager.transition(session_id, SessionState.GENERATING)
@@ -327,10 +394,11 @@ class DialogOrchestrator:
                 first_token_received = False
                 start_llm = time.perf_counter()
                 with tracer.start_as_current_span("llm_stream") as llm_span:
-                    llm_span.set_attribute("model", LLM_MODEL_ID)
+                    model_id = resolve_llm_model_id()
+                    llm_span.set_attribute("model", model_id)
 
                     if hasattr(self.llm, "stream_answer"):
-                        llm_stream = self.llm.stream_answer(LLM_MODEL_ID, messages, turn_context)
+                        llm_stream = self.llm.stream_answer(model_id, messages, turn_context)
                     elif hasattr(self.llm, "stream_chat"):
                         llm_stream = self.llm.stream_chat(messages)
                     else:
@@ -344,15 +412,14 @@ class DialogOrchestrator:
                             raise asyncio.CancelledError
                         if not first_token_received:
                             llm_ttft_metric.labels(
-                                model_id=LLM_MODEL_ID, status="success"
+                                model_id=model_id, status="success"
                             ).observe(time.perf_counter() - start_llm)
                             first_token_received = True
                         full_response += chunk
 
-                try:
-                    parsed_json = json.loads(full_response)
-                except json.JSONDecodeError:
-                    parsed_json = None
+                parsed_json = parse_llm_json(full_response)
+                if parsed_json is not None:
+                    parsed_json = normalize_llm_payload(parsed_json)
                 if (
                     parsed_json is None
                     or not self.guardrails.validate_output(parsed_json, valid_source_ids)

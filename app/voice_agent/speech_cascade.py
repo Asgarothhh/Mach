@@ -72,8 +72,11 @@ class SpeechCascade:
             )
         self._vad = vad_adapter
         self._recognizer = recognizer
-        self._queue: asyncio.Queue[AudioFrame | None] = asyncio.Queue()
-        self._task = asyncio.create_task(self._run())
+        # Tasks are started on first feed() so ``build_cascade`` can run in
+        # ``asyncio.to_thread`` without a running loop in the worker thread.
+        self._queue: asyncio.Queue[AudioFrame | None] | None = None
+        self._task: asyncio.Task | None = None
+        self._watchdog_task: asyncio.Task | None = None
         self._frames: deque[tuple[int, bytes]] = deque()
         self._segment: bytearray | None = None
         self._next_ts_ms = 0
@@ -82,6 +85,12 @@ class SpeechCascade:
         self.current_turn_id: str | None = None
         self._closed = False
         self._last_audio_at = 0.0
+
+    def _ensure_started(self) -> None:
+        if self._task is not None:
+            return
+        self._queue = asyncio.Queue()
+        self._task = asyncio.create_task(self._run())
         self._watchdog_task = asyncio.create_task(self._silence_watchdog())
 
     # -- public API --------------------------------------------------------
@@ -92,6 +101,9 @@ class SpeechCascade:
             raise SpeechError(
                 ErrorCode.INVALID_AUDIO, "PCM16 payload must be non-empty and even"
             )
+        if self._closed:
+            raise SpeechError(ErrorCode.INVALID_AUDIO, "cascade is closed")
+        self._ensure_started()
         self._last_audio_at = time.monotonic()
         await self._enqueue(pcm_s16le)
 
@@ -105,19 +117,25 @@ class SpeechCascade:
         if self._closed:
             return
         self._closed = True
-        self._watchdog_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await self._watchdog_task
-        await self._queue.put(None)
-        try:
-            await asyncio.wait_for(self._task, timeout=15)
-        except TimeoutError:  # pragma: no cover - defensive
-            self._task.cancel()
+        if self._watchdog_task is not None:
+            self._watchdog_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._watchdog_task
+        if self._queue is not None:
+            await self._queue.put(None)
+        if self._task is not None:
+            try:
+                await asyncio.wait_for(self._task, timeout=15)
+            except TimeoutError:  # pragma: no cover - defensive
+                self._task.cancel()
 
     # -- internals ---------------------------------------------------------
 
     async def _enqueue(self, pcm_s16le: bytes) -> None:
         if self._closed:
+            raise SpeechError(ErrorCode.INVALID_AUDIO, "cascade is closed")
+        queue = self._queue
+        if queue is None:
             raise SpeechError(ErrorCode.INVALID_AUDIO, "cascade is closed")
         frame = AudioFrame(
             session_id=self.session_id,
@@ -132,7 +150,7 @@ class SpeechCascade:
             self._segment.extend(pcm_s16le)
         self._next_ts_ms += int(round(len(pcm_s16le) / 2 / SAMPLE_RATE * 1000))
         self._trim_frames()
-        await self._queue.put(frame)
+        await queue.put(frame)
 
     async def _silence_watchdog(self) -> None:
         """Streaming channels normally send silence continuously.
@@ -163,9 +181,13 @@ class SpeechCascade:
             self._frames.popleft()
 
     async def _run(self) -> None:
+        queue = self._queue
+        if queue is None:
+            return
+
         async def frames() -> AsyncIterator[AudioFrame]:
             while True:
-                item = await self._queue.get()
+                item = await queue.get()
                 if item is None:
                     return
                 yield item

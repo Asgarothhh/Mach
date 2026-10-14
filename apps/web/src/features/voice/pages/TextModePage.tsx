@@ -10,13 +10,23 @@ import { sendTextMessage } from '../../chat/services/chat.service';
 import { useTenant } from '../../tenant/model/TenantContext';
 import { useVoiceExperience } from '../model/VoiceExperienceContext';
 
+function answerStatusLabel(status?: string): string | undefined {
+  if (!status) return undefined;
+  if (status === 'grounded') return 'Ответ по источникам';
+  if (status === 'needs_clarification' || status === 'no_evidence') return 'Нужно уточнение';
+  return 'Не удалось получить ответ. Попробуйте ещё раз.';
+}
+
+function answerStatusTone(status?: string): 'success' | 'warning' {
+  return status === 'grounded' ? 'success' : 'warning';
+}
+
 export function TextModePage() {
   const { conversation, voice } = useVoiceExperience();
   const { tenantId } = useTenant();
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [lastStatus, setLastStatus] = useState<string | undefined>();
-  const [lastFallback, setLastFallback] = useState<string | undefined>();
   const navigate = useNavigate();
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -30,7 +40,6 @@ export function TextModePage() {
     try {
       const result = await sendTextMessage({ sessionId: voice.sessionId ?? '', text, tenantId });
       setLastStatus(result.answer_status);
-      setLastFallback(result.fallback_reason);
       conversation.addMessage('assistant', result.answer_text, env.demoMode && !env.backendTextTest ? 'demo' : 'live', {
         citations: result.citations ?? [],
       });
@@ -47,6 +56,7 @@ export function TextModePage() {
 
   const latestAnswer = [...conversation.messages].reverse().find((message) => message.role === 'assistant');
   const sources = latestAnswer?.citations ?? (env.demoMode && !env.backendTextTest && conversation.messages.length ? demoSources : []);
+  const statusLabel = answerStatusLabel(lastStatus);
 
   return (
     <section className="text-page">
@@ -90,7 +100,7 @@ export function TextModePage() {
         <aside className="text-aside">
           <section className="side-info-card">
             <h2>Голосовой режим</h2>
-            <p className="muted-copy">Микрофон не передаёт аудио. Текстовый диалог доступен.{env.backendTextTest ? ' Запрос отправляется в FastAPI как финальный ASR-текст; синтез аудио пока заглушка.' : ''}</p>
+            <p className="muted-copy">Можно продолжить в тексте или вернуться к голосу в браузере.</p>
             <button
               className="button button--secondary"
               type="button"
@@ -101,17 +111,16 @@ export function TextModePage() {
           </section>
           <section className="side-info-card">
             <h2>Из предыдущего ответа</h2>
-            {lastStatus && <StatusBadge tone={lastStatus === 'grounded' ? 'success' : 'warning'}>{lastStatus}</StatusBadge>}
-            {lastFallback && <p className="muted-copy">fallback_reason: {lastFallback}</p>}
-            <p className="muted-copy">Источники отображаются рядом с ответом, когда их вернёт backend.</p>
+            {statusLabel && <StatusBadge tone={answerStatusTone(lastStatus)}>{statusLabel}</StatusBadge>}
+            <p className="muted-copy">Источники отображаются рядом с ответом, когда они есть.</p>
             {sources.length === 0 && latestAnswer && (
-              <p className="muted-copy">Подтверждений нет — источники не пришли или answer_status не grounded.</p>
+              <p className="muted-copy">Подтверждений нет — в этом ответе нет ссылок на материалы компании.</p>
             )}
             <div className="source-stack">{sources.map((source) => <SourceCard key={source.id} source={source} compact />)}</div>
           </section>
           <div className="scope-note">
             <strong>Не выполняю операции</strong>
-            <p>Текстовый режим сохраняет тестовый диалог. Не обещайте действий без подтверждённого backend adapter.</p>
+            <p>Помощник отвечает по базе знаний компании. Не сообщайте паспортные данные и номера карт.</p>
             <a href="https://help.mts.by/" target="_blank" rel="noopener noreferrer">Официальная поддержка <ArrowRight size={14} /></a>
           </div>
         </aside>

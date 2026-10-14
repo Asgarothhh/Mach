@@ -44,11 +44,15 @@ test('live call export is not advertised before an audited endpoint exists', asy
   assert.match(history, /env\.demoMode && <button[^>]*onClick=\{downloadCsv\}/);
 });
 
-test('browser microphone routes are clearly labelled as test mode', async () => {
+test('browser microphone routes are labelled as an in-browser channel, not telephony', async () => {
   const layout = await read('src/app/layouts/PublicLayout.tsx');
-  assert.match(layout, /Browser test console/);
-  assert.match(layout, /SIP\/VoIP/);
-  assert.match(layout, /Browser test channel \/ mock/);
+  const footer = await read('src/shared/components/AppFooter.tsx');
+  const envSource = await read('src/shared/config/env.ts');
+  assert.match(layout, /Голосовой помощник в браузере/);
+  assert.match(layout, /Разговор идёт через браузер\. Это не телефонный звонок\./);
+  assert.doesNotMatch(layout, /Browser test console|LiveKit|PCM16|mock-канал/);
+  assert.doesNotMatch(footer, /OPENROUTER_API_KEY|LIVEKIT_API_SECRET|frontend bundle|legal\/security/);
+  assert.doesNotMatch(envSource, /import\.meta\.env\.(OPENROUTER_API_KEY|LIVEKIT_API_SECRET|VITE_OPENROUTER)/);
 });
 
 test('admin call detail and transcript correction use session-scoped admin API', async () => {

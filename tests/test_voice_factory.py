@@ -51,6 +51,16 @@ def test_api_import_does_not_load_torch():
     assert "onnx_asr" not in sys.modules
 
 
+def test_live_status_does_not_instantiate_engines(monkeypatch):
+    monkeypatch.setenv("VOICE_ASR_MODE", "live")
+    monkeypatch.setenv("VOICE_TTS_MODE", "real")
+    from app.voice_agent import factory
+
+    assert factory.voice_pipeline_status() == "live"
+    assert "torch" not in sys.modules
+    assert "onnx_asr" not in sys.modules
+
+
 @pytest.mark.skipif(
     importlib.util.find_spec("silero_vad") is not None,
     reason="live Silero VAD is installed in this environment",
@@ -75,3 +85,52 @@ def test_live_vad_wraps_unexpected_errors(monkeypatch):
     with pytest.raises(SpeechError) as excinfo:
         factory.build_vad()
     assert excinfo.value.code is ErrorCode.MODEL_UNAVAILABLE
+
+
+def test_live_vad_fork_does_not_share_model_state(monkeypatch):
+    monkeypatch.setenv("VOICE_ASR_MODE", "live")
+    from app.voice_agent import factory
+    from app.voice_agent.factory import reset_live_vad_for_tests
+
+    class _NoGrad:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    class _TorchStub:
+        def no_grad(self):
+            return _NoGrad()
+
+        def from_numpy(self, frame):
+            return frame
+
+    monkeypatch.setitem(sys.modules, "torch", _TorchStub())
+
+    class CounterModel:
+        def __init__(self, n: int = 0) -> None:
+            self.n = n
+
+        def __call__(self, tensor, sample_rate: int):
+            del tensor, sample_rate
+            self.n += 1
+            return float(self.n)
+
+        def reset_states(self) -> None:
+            return None
+
+    def fake_from_pretrained(config=None):
+        return SileroVADAdapter.from_loaded_model(CounterModel(), config)
+
+    monkeypatch.setattr(SileroVADAdapter, "from_pretrained", fake_from_pretrained)
+    reset_live_vad_for_tests()
+    first = factory.build_vad()
+    second = factory.build_vad()
+    import numpy as np
+
+    frame = np.zeros(512, dtype=np.float32)
+    assert first._speech_probability(frame, 16000) == 1.0
+    assert second._speech_probability(frame, 16000) == 1.0
+    assert first._speech_probability(frame, 16000) == 2.0
+    assert first is not second
