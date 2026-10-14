@@ -84,6 +84,8 @@ test('compose and Dockerfile enable backend admin sessions on the demo stand', a
   assert.match(compose, /VOICE_ASR_MODE:\s*live/);
   assert.match(compose, /VOICE_TTS_MODE:\s*real/);
   assert.doesNotMatch(compose, /VOICE_ASR_MODE:\s*mock/);
+  assert.match(compose, /QDRANT_URL:\s*http:\/\/qdrant:6333/);
+  assert.doesNotMatch(compose, /QDRANT_URL:\s*\$\{QDRANT_URL/);
 });
 
 test('clearing the text dialog ends the cached backend session', async () => {

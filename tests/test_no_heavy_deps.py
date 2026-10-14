@@ -21,3 +21,6 @@ def test_api_image_bakes_live_speech_weights() -> None:
     assert "VOICE_ASR_MODE: live" in compose
     assert "VOICE_TTS_MODE: real" in compose
     assert "VOICE_ASR_MODE: mock" not in compose
+    assert "QDRANT_URL: http://qdrant:6333" in compose
+    assert "REDIS_URL: redis://redis:6379/0" in compose
+    assert "${QDRANT_URL" not in compose

@@ -327,6 +327,7 @@ async def _publish_demo_corpora(
                 "knowledge_seed_tenant_failed",
                 tenant_id=tenant_id,
                 error_class=exc.__class__.__name__,
+                qdrant_url=os.environ.get("QDRANT_URL", ""),
             )
             continue
         try:

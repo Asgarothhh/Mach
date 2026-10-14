@@ -26,8 +26,9 @@ services:
       TTS_SAMPLE_RATE: "24000"
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-123789}@postgres:5432/${POSTGRES_DB:-voice_agent}
       SYNC_DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-123789}@postgres:5432/${POSTGRES_DB:-voice_agent}
-      QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      # Host .env often has 127.0.0.1 for local uvicorn. That is unreachable inside the container.
+      QDRANT_URL: http://qdrant:6333
+      REDIS_URL: redis://redis:6379/0
       EMBEDDING_MODEL_ID: ${EMBEDDING_MODEL_ID:-bge-m3-onnx}
       RERANKER_MODEL_ID: ${RERANKER_MODEL_ID:-none}
     restart: unless-stopped
